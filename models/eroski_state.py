@@ -89,6 +89,8 @@ class EroskiState(TypedDict, total=False):
     shift: Optional[str]                    # Turno: mañana, tarde, noche
     employee_level: Optional[int]           # Nivel: 1=empleado, 2=responsable, 3=supervisor
     authenticated: bool                     # Si el empleado está autenticado
+    email_authen_tried: bool                     # Si el empleado está autenticado
+    employee_id_authent_tried: bool                     # Si el empleado está autenticado
     
     # ========== CONVERSACIÓN ==========
     messages: Annotated[List[BaseMessage], add_messages]             # Historia de mensajes
@@ -99,6 +101,10 @@ class EroskiState(TypedDict, total=False):
     confidence_score: Optional[float]       # Confianza en la clasificación (0-1)
     
     # ========== INFORMACIÓN DE LA INCIDENCIA ==========
+    incident_user_name: Optional[str]       # Nombre del usuario reportado
+    incident_store_name: Optional[str]
+    incident_department: Optional[str]
+    incident_id: Optional[str]              # ID único de la incidencia
     incident_type: Optional[str]            # Tipo específico (desde JSON config)
     incident_description: Optional[str]     # Descripción del problema
     incident_details: Optional[Dict[str, Any]] # Detalles específicos

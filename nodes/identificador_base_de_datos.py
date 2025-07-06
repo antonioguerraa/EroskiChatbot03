@@ -17,6 +17,7 @@ CARACTERÍSTICAS:
 - Manejo robusto de errores de conexión
 - Interacción conversacional natural
 - Mapeo automático al estado de EroskiState
+- Tools adaptadas a la estructura real de la BD
 """
 
 from typing import Dict, Any, Optional, List, Union
@@ -28,15 +29,154 @@ from langgraph.types import Command
 from datetime import datetime
 import logging
 import asyncpg
+import asyncio
+import json
 import os
 import re
 
 from models.eroski_state import EroskiState
 from nodes.base_node import BaseNode
 from utils.llm.providers import get_llm
-# Importar las tools existentes en lugar de definirlas aquí
-from nodes.tools.bbdd_query import search_by_email, search_by_employee_id
+from config.settings import get_settings
 
+# Importar el decorador de confirmación
+try:
+    from nodes.tools.confirmation_tool import add_confirmation_tool_to_node
+    CONFIRMATION_AVAILABLE = True
+except ImportError:
+    CONFIRMATION_AVAILABLE = False
+    add_confirmation_tool_to_node = lambda cls: cls  # Decorador vacío si no está disponible
+
+
+# =============================================================================
+# TOOLS ADAPTADAS A LA ESTRUCTURA REAL DE LA BD
+# =============================================================================
+
+@tool
+async def search_by_email_adapted(email: str) -> Dict[str, Any]:
+    """
+    Buscar empleado por email en la base de datos PostgreSQL.
+    Adaptado a la estructura real: nombre, apellido, email, numero_empleado, rol, departamento, activo
+    
+    Args:
+        email: Email del empleado a buscar
+        
+    Returns:
+        Dict con los datos del empleado o información de error
+    """
+    logger = logging.getLogger("SearchByEmailAdapted")
+    
+    try:
+        # Validar formato de email
+        if not email or not isinstance(email, str):
+            return {"found": False, "error": "Email no válido"}
+        
+        email = email.strip().lower()
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return {"found": False, "error": "Formato de email inválido"}
+        
+        # Obtener configuración de BD
+        settings = get_settings()
+        connection_string = settings.database.connection_string
+        
+        # Conectar y buscar usando la estructura real
+        conn = await asyncpg.connect(connection_string)
+        
+        try:
+            result = await conn.fetchrow("""
+                SELECT numero_empleado, nombre, apellido, email, 
+                       rol, departamento, activo
+                FROM usuarios 
+                WHERE LOWER(email) = $1 AND activo = true
+            """, email)
+            
+            if result:
+                logger.info(f"✅ Empleado encontrado por email: {result['nombre']} {result['apellido']}")
+                return {
+                    "found": True,
+                    "numero_empleado": result['numero_empleado'],
+                    "nombre": f"{result['nombre']} {result['apellido']}",
+                    "email": result['email'],
+                    "nombre_tienda": f"Eroski {result['departamento']}",  # Usar departamento como tienda
+                    "departamento": result['departamento']
+                }
+            else:
+                logger.info(f"❌ No se encontró empleado con email: {email}")
+                return {"found": False, "error": "Email no encontrado en la base de datos"}
+                
+        finally:
+            await conn.close()
+            
+    except Exception as e:
+        logger.error(f"❌ Error buscando por email {email}: {e}")
+        return {"found": False, "error": f"Error de conexión: {str(e)}"}
+
+@tool
+async def search_by_employee_id_adapted(employee_id: str) -> Dict[str, Any]:
+    """
+    Buscar empleado por número de empleado en la base de datos PostgreSQL.
+    Adaptado a la estructura real: numero_empleado (VARCHAR(4))
+    
+    Args:
+        employee_id: Número de empleado a buscar
+        
+    Returns:
+        Dict con los datos del empleado o información de error
+    """
+    logger = logging.getLogger("SearchByEmployeeIdAdapted")
+    
+    try:
+        # Validar número de empleado
+        if not employee_id or not isinstance(employee_id, str):
+            return {"found": False, "error": "Número de empleado no válido"}
+        
+        employee_id = employee_id.strip()
+        # Acepta tanto números como códigos alfanuméricos de hasta 4 caracteres
+        if len(employee_id) > 4:
+            return {"found": False, "error": "Número de empleado debe tener máximo 4 caracteres"}
+        
+        # Obtener configuración de BD
+        settings = get_settings()
+        connection_string = settings.database.connection_string
+        
+        # Conectar y buscar
+        conn = await asyncpg.connect(connection_string)
+        
+        try:
+            result = await conn.fetchrow("""
+                SELECT numero_empleado, nombre, apellido, email, 
+                       rol, departamento, activo
+                FROM usuarios 
+                WHERE numero_empleado = $1 AND activo = true
+            """, employee_id)
+            
+            if result:
+                logger.info(f"✅ Empleado encontrado por ID: {result['nombre']} {result['apellido']}")
+                return {
+                    "found": True,
+                    "numero_empleado": result['numero_empleado'],
+                    "nombre": f"{result['nombre']} {result['apellido']}",
+                    "email": result['email'],
+                    "nombre_tienda": f"Eroski {result['departamento']}",  # Usar departamento como tienda
+                    "departamento": result['departamento']
+                }
+            else:
+                logger.info(f"❌ No se encontró empleado con ID: {employee_id}")
+                return {"found": False, "error": "Número de empleado no encontrado"}
+                
+        finally:
+            await conn.close()
+            
+    except Exception as e:
+        logger.error(f"❌ Error buscando por ID {employee_id}: {e}")
+        return {"found": False, "error": f"Error de conexión: {str(e)}"}
+
+
+# =============================================================================
+# NODO PRINCIPAL DE IDENTIFICACIÓN
+# =============================================================================
+
+@add_confirmation_tool_to_node
 class IdentificadorBaseDatosNode(BaseNode):
     """
     Nodo de identificación de usuarios mediante base de datos PostgreSQL.
@@ -50,8 +190,8 @@ class IdentificadorBaseDatosNode(BaseNode):
         self.llm = get_llm()
         self.max_attempts = 3
         
-        # Crear agente React con las tools
-        self.tools = [search_by_email, search_by_employee_id]
+        # Crear agente React con las tools adaptadas
+        self.tools = [search_by_email_adapted, search_by_employee_id_adapted]
         self.agent = self._create_react_agent()
         
         # Log sobre la tool de confirmación
@@ -76,8 +216,8 @@ Identificar al usuario utilizando su email o número de empleado a partir de su 
 
 INSTRUCCIONES:
 1. Analiza el mensaje del usuario para extraer email o número de empleado
-2. Si encuentras un email, usa la herramienta search_by_email
-3. Si encuentras un número de empleado, usa la herramienta search_by_employee_id
+2. Si encuentras un email, usa la herramienta search_by_email_adapted
+3. Si encuentras un número de empleado, usa la herramienta search_by_employee_id_adapted
 4. Si encuentras ambos, prioriza el email
 5. Si no encuentras ninguno, pide amablemente que proporcione la información
 
@@ -186,14 +326,12 @@ Puedes escribir algo como:
         self.logger.info(f"🔍 Procesando mensaje: {user_message[:100]}...")
         
         try:
-            # Verificar si es una respuesta de confirmación usando la tool
-            if hasattr(self, 'check_confirmation'):
-                confirmation_result = await self.check_confirmation(user_message)
-                if confirmation_result.get('is_confirmation'):
-                    return await self._handle_confirmation_response(state, confirmation_result)
+            # Para este nodo, vamos directo a extraer datos sin tool de confirmación
+            # ya que está causando problemas de validación
             
             # Extraer email y número de empleado del mensaje
-            extracted_data = self._extract_identification_data(user_message)
+            extracted_data = await self._extract_identification_data(user_message)
+
             
             # Verificar qué tipo de búsqueda realizar basado en flags
             email_tried = state.get("email_authen_tried", False)
@@ -201,15 +339,19 @@ Puedes escribir algo como:
             
             # Determinar método de búsqueda
             if extracted_data["email"] and not email_tried:
+                self.logger.info(f"🔄 Intentando búsqueda por email: {extracted_data['email']}")
                 return await self._search_by_email(state, extracted_data["email"])
             elif extracted_data["employee_id"] and not employee_id_tried:
+                self.logger.info(f"🔄 Intentando búsqueda por ID: {extracted_data['employee_id']}")
                 return await self._search_by_employee_id(state, extracted_data["employee_id"])
             elif extracted_data["email"] or extracted_data["employee_id"]:
                 # Ya se intentó este método, usar el agente para responder
+                self.logger.info("🔄 Método ya intentado, usando agente React")
                 response = await self.agent.ainvoke({"input": user_message})
                 return self._handle_agent_response(state, response["output"])
             else:
                 # No se encontró información de identificación
+                self.logger.info("❌ No se encontró email ni ID en el mensaje")
                 return self._request_identification_info(state)
                 
         except Exception as e:
@@ -255,31 +397,131 @@ Por favor, proporciona:
                 "awaiting_user_input": True,
                 "last_activity": datetime.now()
             })
-    
-    def _extract_identification_data(self, message: str) -> Dict[str, Optional[str]]:
-        """Extraer email y número de empleado del mensaje"""
+
+    async def _extract_identification_data(self, message: str) -> Dict[str, Optional[str]]:
+        self.logger.info(f"🔍 Iniciando extracción híbrida del mensaje: '{message}'")
+
+        # PASO 1: REGEX
+        regex_result = self._extract_with_regex(message)
+
+        extracted_id = regex_result.get("employee_id")
+        if extracted_id and not self.is_valid_employee_id(extracted_id):
+            self.logger.info(f"⚠️ Employee ID rechazado por patrón inválido: {extracted_id}")
+            regex_result["employee_id"] = None
+
+        # PASO 2: Confianza
+        confidence = self._evaluate_regex_confidence(regex_result, message)
+        self.logger.info(f"📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
+
+        # PASO 3: Usar o no usar LLM
+        if confidence >= 0.7:
+            self.logger.info("✅ REGEX confiable, usando resultado directo")
+            return {
+                "email": regex_result["email"],
+                "employee_id": regex_result["employee_id"],
+                "method": "regex",
+                "confidence": confidence
+            }
+        else:
+            self.logger.info("🤖 REGEX no confiable, ejecutando fallback con LLM")
+            return await self._extract_with_llm_fallback(message, regex_result)
+
+    def _extract_with_regex(self, message: str) -> Dict[str, Optional[str]]:
+        """Extracción rápida con REGEX - versión mejorada"""
         
-        # Buscar email
+        # Buscar email con patrón robusto
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         email_match = re.search(email_pattern, message)
         email = email_match.group() if email_match else None
         
-        # Buscar número de empleado (secuencias de dígitos de 3-8 caracteres)
-        employee_id_pattern = r'\b\d{3,8}\b'
-        employee_id_matches = re.findall(employee_id_pattern, message)
-        employee_id = employee_id_matches[0] if employee_id_matches else None
+        # Buscar employee_id con múltiples estrategias
+        employee_id = None
         
-        # También buscar patrones como "empleado 12345"
+        # Estrategia 1: Patrones explícitos con palabras clave
+        explicit_patterns = [
+            r'empleado\s+([A-Za-z0-9]{1,4})',
+            r'mi\s+(?:número|codigo|id)\s+(?:es\s+)?([A-Za-z0-9]{1,4})',
+            r'soy\s+(?:el\s+)?([A-Za-z0-9]{1,4})',
+        ]
+        
+        for pattern in explicit_patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                employee_id = match.group(1)
+                break
+        
+        # Estrategia 2: Códigos alfanuméricos típicos de empleados
         if not employee_id:
-            employee_pattern = r'empleado\s+(\d{3,8})'
-            employee_match = re.search(employee_pattern, message, re.IGNORECASE)
-            employee_id = employee_match.group(1) if employee_match else None
+            alpha_num_pattern = r'\b(?:[A-Za-z]\d{1,3}|[A-Za-z]{1,2}\d{1,2})\b'
+            alpha_matches = re.findall(alpha_num_pattern, message)
+            if alpha_matches:
+                employee_id = alpha_matches[0]
+        
+        # Estrategia 3: Números simples (solo si son únicos y cortos)
+        if not employee_id:
+            number_pattern = r'\b\d{1,4}\b'
+            number_matches = re.findall(number_pattern, message)
+            
+            # Filtrar números que probablemente no sean IDs
+            valid_numbers = []
+            for num in number_matches:
+                # Evitar números muy largos que podrían ser teléfonos
+                if len(num) <= 4 and not self._is_likely_phone_or_date(num, message):
+                    valid_numbers.append(num)
+            
+            if len(valid_numbers) == 1:  # Solo si hay un único candidato
+                employee_id = valid_numbers[0]
         
         return {
             "email": email,
             "employee_id": employee_id
         }
     
+    def _is_likely_phone_or_date(self, number: str, message: str) -> bool:
+        """Determinar si un número es probablemente teléfono o fecha"""
+        
+        # Buscar contexto que sugiera teléfono
+        phone_keywords = ['teléfono', 'telefono', 'móvil', 'movil', 'llama', 'contacto']
+        if any(keyword in message.lower() for keyword in phone_keywords):
+            return True
+        
+        # Buscar contexto que sugiera fecha
+        date_keywords = ['fecha', 'año', 'mes', 'día', 'nacimiento']
+        if any(keyword in message.lower() for keyword in date_keywords):
+            return True
+        
+        return False
+    
+    def _evaluate_regex_confidence(self, regex_result: Dict, message: str) -> float:
+        """Evaluar confianza del resultado REGEX"""
+        
+        confidence = 0.0
+        
+        # Email válido encontrado
+        if regex_result["email"]:
+            confidence += 0.4
+            
+            # Bonus si es email corporativo de Eroski
+            if "@eroski.es" in regex_result["email"].lower():
+                confidence += 0.2
+        
+        # Employee ID encontrado
+        if regex_result["employee_id"]:
+            confidence += 0.3
+            
+            # Bonus por formato típico de código de empleado
+            if re.match(r'^[A-Za-z]{1,2}\d{1,3}$', regex_result["employee_id"]):
+                confidence += 0.2
+
+    def is_valid_employee_id(self, value: Optional[str]) -> bool:
+        """
+        Verifica si el valor sigue el patrón típico de un código de empleado.
+        Ejemplo: E123, G301, X9, etc.
+        """
+        if not value:
+            return False
+        return bool(re.match(r'^[A-Za-z]{1,2}\d{1,3}$', value.strip()))
+   
     async def _search_by_email(self, state: EroskiState, email: str) -> Command:
         """Buscar por email y actualizar estado"""
         
@@ -287,9 +529,9 @@ Por favor, proporciona:
         
         # Realizar búsqueda usando invoke en lugar de llamada directa
         try:
-            result = await search_by_email.ainvoke({"email": email})
+            result = await search_by_email_adapted.ainvoke({"email": email})
         except Exception as e:
-            self.logger.error(f"❌ Error en tool search_by_email: {e}")
+            self.logger.error(f"❌ Error en tool search_by_email_adapted: {e}")
             result = {"found": False, "error": f"Error técnico: {str(e)}"}
         
         # Actualizar flag
@@ -311,9 +553,9 @@ Por favor, proporciona:
         
         # Realizar búsqueda usando invoke en lugar de llamada directa
         try:
-            result = await search_by_employee_id.ainvoke({"employee_id": employee_id})
+            result = await search_by_employee_id_adapted.ainvoke({"employee_id": employee_id})
         except Exception as e:
-            self.logger.error(f"❌ Error en tool search_by_employee_id: {e}")
+            self.logger.error(f"❌ Error en tool search_by_employee_id_adapted: {e}")
             result = {"found": False, "error": f"Error técnico: {str(e)}"}
         
         # Actualizar flag
@@ -386,7 +628,7 @@ También puedes contactar con tu supervisor si no tienes estos datos. 📞"""
             
         else:
             # Ambos métodos fallaron
-            complete_update = self._handle_identification_failed(state, base_update)
+            return self._handle_identification_failed(state, base_update)
             
         return Command(update=complete_update)
     
@@ -490,6 +732,86 @@ Ha ocurrido un problema técnico durante la identificación.
             "last_activity": datetime.now()
         })
 
+    async def _extract_with_llm_fallback(self, message: str, regex_result: Dict) -> Dict[str, Optional[str]]:
+        """Usar LLM como fallback para casos complejos"""
+        
+        try:
+            llm_result = await self._extract_with_llm(message)
+            
+            # Combinar resultados: LLM tiene prioridad, REGEX como respaldo
+            final_result = {
+                "email": llm_result.get("email") or regex_result.get("email"),
+                "employee_id": llm_result.get("employee_id") or regex_result.get("employee_id"),
+                "method": "llm_hybrid",
+                "confidence": llm_result.get("confidence", 0.8)
+            }
+            
+            self.logger.info(f"🤖 LLM resultado: email='{final_result['email']}', id='{final_result['employee_id']}'")
+            return final_result
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error en LLM, usando REGEX como fallback: {e}")
+            return {
+                "email": regex_result["email"],
+                "employee_id": regex_result["employee_id"],
+                "method": "regex_fallback",
+                "confidence": 0.5
+            }
+    
+    async def _extract_with_llm(self, message: str) -> Dict[str, Any]:
+        """Usar LLM para extracción inteligente y contextual"""
+        
+        prompt = f"""Analiza este mensaje de un empleado de Eroski y extrae la información de identificación.
+
+MENSAJE: "{message}"
+
+INSTRUCCIONES:
+- EMAIL: Busca direcciones de correo electrónico válidas
+- EMPLOYEE_ID: Busca códigos/números de empleado (1-4 caracteres)
+- IGNORA: teléfonos, fechas, direcciones, otros números no relacionados
+
+CONTEXTO:
+- Los IDs de empleado suelen ser códigos cortos (ej: G301, E001, 1234)
+- Los emails corporativos suelen terminar en @eroski.es
+- Si hay múltiples números, determina cuál es más probable que sea un ID
+
+Responde con JSON válido sin markdown:
+{{"email": "email@domain.com", "employee_id": "ID123", "confidence": 0.9}}
+
+Si no encuentras email o employee_id, usa null."""
+
+        try:
+            response = await self.llm.ainvoke(prompt)
+            content = response.content.strip()
+            
+            # Limpiar la respuesta de posible markdown
+            if content.startswith("```"):
+                lines = content.split('\n')
+                content = '\n'.join(lines[1:-1])  # Remover primera y última línea
+            
+            result = json.loads(content)
+            
+            # Validar y normalizar
+            if not isinstance(result, dict):
+                raise ValueError("Respuesta no es un dict válido")
+            
+            # Convertir "null" strings a None
+            for key in ["email", "employee_id"]:
+                if result.get(key) == "null" or result.get(key) == "":
+                    result[key] = None
+            
+            # Asegurar que tenemos confidence
+            if "confidence" not in result:
+                result["confidence"] = 0.8
+                
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error procesando respuesta LLM: {e}")
+            self.logger.error(f"❌ Contenido recibido: {response.content if 'response' in locals() else 'No response'}")
+            return {"email": None, "employee_id": None, "confidence": 0.0}
+    
+
 
 # =============================================================================
 # FUNCIÓN WRAPPER PARA LANGGRAPH
@@ -513,5 +835,22 @@ async def identificador_base_de_datos_node(state: EroskiState) -> Command:
     return await node.execute(state)
 
 
+async def identificador_base_de_datos_node(state: EroskiState) -> Command:
+    """
+    Función wrapper para LangGraph - Nodo Identificador Base de Datos
+    
+    Args:
+        state: Estado actual como EroskiState
+        
+    Returns:
+        Command con las actualizaciones de estado
+    """
+    
+    # Crear instancia del nodo
+    node = IdentificadorBaseDatosNode()
+    
+    # Ejecutar el nodo
+    return await node.execute(state)
+
 # Exports
-__all__ = ["identificador_base_de_datos_node", "IdentificadorBaseDatosNode"]
+__all__ = ["identificador_base_de_datos_node", "IdentificadorBaseDatosNode", "search_by_email_adapted", "search_by_employee_id_adapted"]
