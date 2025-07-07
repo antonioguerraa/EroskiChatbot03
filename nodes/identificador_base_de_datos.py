@@ -528,26 +528,21 @@ Por favor, proporciona:
         """Evaluar confianza del resultado REGEX"""
         
         confidence = 0.0
-        print("🌄JGL 1")
         # Email válido encontrado
         if regex_result["email"]:
             confidence += 0.4
-            print("🌄JGL 2")
             
             # Bonus si es email corporativo de Eroski
             if "@eroski.es" in regex_result["email"].lower():
                 confidence += 0.2
-                print("🌄JGL 3")
         
         # Employee ID encontrado
         if regex_result["employee_id"]:
             confidence += 0.3
-            print("🌄JGL 4")
             
             # Bonus por formato típico de código de empleado
             if re.match(r'^[A-Za-z]{1,2}\d{1,3}$', regex_result["employee_id"]):
                 confidence += 0.2
-                print("🌄JGL 5")
         return confidence
 
     def is_valid_employee_id(self, value: Optional[str]) -> bool:

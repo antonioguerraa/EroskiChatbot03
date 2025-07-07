@@ -1,0 +1,1365 @@
+# =====================================================
+# nodes/identificacion_manual.py - Nodo de Identificación Manual
+# =====================================================
+"""
+Nodo conversacional basado en LLM para recopilar información de identificación del empleado.
+
+RESPONSABILIDADES:
+- Recopilar: nombre, apellido, número de empleado, nombre de tienda, sección
+- Validar tienda contra tabla maestro_tiendas de PostgreSQL
+- Usar confirmación inteligente para datos ambiguos
+- Mantener progreso conversacional
+- Actualizar estado EroskiState correctamente
+
+CARACTERÍSTICAS:
+- Interacción 100% basada en LLM
+- Progreso conservado entre turnos
+- Corrección de datos en tiempo real
+- Búsqueda fuzzy de tiendas
+- Confirmación explícita de datos críticos
+"""
+
+from typing import Dict, Any, Optional, List, Tuple
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.types import Command
+from datetime import datetime
+import logging
+import asyncpg
+import json
+import re
+import asyncio
+
+from models.eroski_state import EroskiState
+from nodes.base_node import BaseNode
+from utils.llm.providers import get_llm
+from config.settings import get_settings
+
+# Importar tool de confirmación
+try:
+    from nodes.tools.confirmation_tool import ConfirmationTool
+    CONFIRMATION_AVAILABLE = True
+except ImportError:
+    CONFIRMATION_AVAILABLE = False
+    ConfirmationTool = None
+
+
+class IdentificacionManualNode(BaseNode):
+    """
+    Nodo conversacional para recopilar identificación del empleado.
+    
+    FLUJO:
+    1. Mostrar datos ya recogidos
+    2. Solicitar datos faltantes
+    3. Validar tienda contra BD
+    4. Confirmar con usuario
+    5. Actualizar estado cuando esté completo
+    """
+    
+    def __init__(self):
+        super().__init__("IdentificacionManual")
+        self.llm = get_llm()
+        
+        # Inicializar tool de confirmación si está disponible
+        self.confirmation_tool = ConfirmationTool() if CONFIRMATION_AVAILABLE else None
+        
+        # Cache de tiendas y departamentos para optimización
+        self._tiendas_cache: Optional[List[Dict[str, Any]]] = None
+        self._departamentos_cache: Optional[List[Dict[str, Any]]] = None
+        
+        # Orden sugerido de campos
+        self.campos_orden = ["nombre", "numero_empleado", "tienda", "seccion"]
+        
+        # Prompt principal para el LLM conversacional
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", self._get_system_prompt()),
+            ("human", "{user_input}")
+        ])
+        
+        self.chain = self.prompt | self.llm
+    
+    def _get_system_prompt(self) -> str:
+        """Prompt del sistema para el LLM conversacional"""
+        return """Eres un asistente especializado en recopilar información de empleados de Eroski de forma conversacional.
+
+TU MISIÓN:
+Recopilar estos datos del empleado paso a paso:
+- Nombre completo (nombre + apellido)
+- Número de empleado 
+- Nombre de la tienda donde ocurre la incidencia
+- Nombre de la sección/departamento
+
+INFORMACIÓN DEL ESTADO ACTUAL:
+{datos_actuales}
+
+INSTRUCCIONES DE COMPORTAMIENTO:
+1. 📋 SIEMPRE comienza mostrando los datos ya recogidos
+2. 🎯 Solicita SOLO los datos que faltan, no los que ya tienes
+3. 🔄 Permite correcciones ("quiero cambiar mi nombre")
+4. 📝 Usa lenguaje natural y empático
+5. ✅ Cuando tengas todos los datos, confirma antes de finalizar
+6. 🏬 Para tiendas, acepta nombres naturales ("Eroski de Bilbao")
+
+EJEMPLOS DE RESPUESTAS:
+- "He recogido tu nombre: Juan Pérez. Ahora necesito tu número de empleado."
+- "Perfecto, tienda confirmada. ¿En qué sección trabajas? (ej: Carnicería, Panadería, Caja)"
+- "Datos completos ✅ Nombre: Juan Pérez, Nº: 1234, Tienda: Hipermercado Bilbondo, Sección: Pescadería. ¿Es correcto?"
+
+REGLAS IMPORTANTES:
+- Sé conversacional, no robótico
+- Un dato por turno, no agobies al usuario
+- Valida entradas malformadas de forma amable
+- Si algo no está claro, pregunta específicamente"""
+
+    def get_required_fields(self) -> List[str]:
+        """Campos requeridos del estado"""
+        return ["messages", "session_id"]
+    
+    def get_actor_description(self) -> str:
+        """Descripción del actor para logging"""
+        return "Recopilo información de identificación del empleado paso a paso"
+
+    async def execute(self, state: EroskiState) -> Command:
+        """
+        Ejecutar flujo de identificación manual.
+        
+        Args:
+            state: Estado actual de EroskiState
+            
+        Returns:
+            Command con estado actualizado
+        """
+        try:
+            self.logger.info("🔍 Iniciando identificación manual")
+            
+            # 1. Extraer último mensaje del usuario
+            messages = state.get("messages", [])
+            if not messages:
+                return await self._iniciar_conversacion(state)
+            
+            ultimo_mensaje = messages[-1]
+            if isinstance(ultimo_mensaje, HumanMessage):
+                user_input = ultimo_mensaje.content
+            else:
+                return await self._iniciar_conversacion(state)
+            
+            # DEBUG: Mostrar flags del estado
+            self.logger.info(f"🔍 Estado actual - pending_store_confirmation: {state.get('pending_store_confirmation')}")
+            self.logger.info(f"🔍 Estado actual - pending_section_confirmation: {state.get('pending_section_confirmation')}")
+            
+            # 2. Verificar si hay confirmación de tienda pendiente
+            if state.get("pending_store_confirmation"):
+                self.logger.info("🏪 Procesando confirmación de tienda pendiente")
+                return await self._procesar_confirmacion_tienda(state, user_input)
+            
+            # 3. Verificar si hay confirmación de sección pendiente
+            if state.get("pending_section_confirmation"):
+                self.logger.info("🧭 Procesando confirmación de sección pendiente")
+                return await self._procesar_confirmacion_seccion(state, user_input)
+            
+            # 4. Verificar si es una corrección
+            if self._es_correccion(user_input):
+                self.logger.info("✏️ Es una corrección")
+                return await self._manejar_correccion(state, user_input)
+            
+            # 5. Cargar tiendas y departamentos si no están en cache
+            if self._tiendas_cache is None:
+                self._tiendas_cache = await self._cargar_tiendas_desde_bd()
+            
+            if self._departamentos_cache is None:
+                self._departamentos_cache = await self._cargar_departamentos_desde_bd()
+            
+            # 6. Extraer datos del mensaje del usuario
+            datos_extraidos = await self._extraer_datos_usuario(user_input)
+            self.logger.info(f"🔍 Datos extraídos en flujo principal: {datos_extraidos}")
+            
+            # 7. Actualizar estado con nuevos datos
+            state_actualizado = self._actualizar_estado_con_datos(state, datos_extraidos)
+            
+            # 8. Verificar si necesita confirmación de tienda
+            if self._necesita_confirmacion_tienda(state_actualizado, datos_extraidos):
+                self.logger.info("🏪 Necesita confirmación de tienda")
+                return await self._solicitar_confirmacion_tienda(state_actualizado, datos_extraidos)
+            
+            # 9. Verificar si necesita confirmación de departamento
+            if self._necesita_confirmacion_departamento(state_actualizado, datos_extraidos):
+                self.logger.info("🧭 Necesita confirmación de departamento")
+                return await self._solicitar_confirmacion_departamento(state_actualizado, datos_extraidos)
+            
+            # 10. Verificar completitud
+            if self._datos_completos(state_actualizado):
+                self.logger.info("✅ Datos completos, finalizando")
+                return await self._finalizar_identificacion(state_actualizado)
+            
+            # 11. EMERGENCY FALLBACK: Si llegamos aquí y el input parece ser un departamento
+            if (len(user_input.strip().split()) == 1 and 
+                len(user_input.strip()) > 4 and 
+                not state_actualizado.get("incident_department")):
+                
+                word = user_input.strip()
+                self.logger.info(f"🚨 EMERGENCY: Detectando '{word}' como posible departamento")
+                
+                # Forzar que sea una sección
+                datos_forzados = {"seccion": word}
+                state_forzado = self._actualizar_estado_con_datos(state, datos_forzados)
+                
+                # Intentar confirmación de departamento
+                if self._necesita_confirmacion_departamento(state_forzado, datos_forzados):
+                    self.logger.info("🚨 EMERGENCY: Forzando confirmación de departamento")
+                    return await self._solicitar_confirmacion_departamento(state_forzado, datos_forzados)
+            
+            # 12. Continuar solicitando datos faltantes
+            self.logger.info("➡️ Solicitando datos faltantes")
+            return await self._solicitar_datos_faltantes(state_actualizado)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en identificación manual: {e}")
+            return await self._manejar_error(state, str(e))
+
+    async def _iniciar_conversacion(self, state: EroskiState) -> Command:
+        """Iniciar la conversación de identificación"""
+        mensaje = (
+            "¡Hola! 👋 Voy a ayudarte a reportar tu incidencia.\n\n"
+            "Primero necesito algunos datos para identificarte:\n\n"
+            "🔹 **Tu nombre completo**\n"
+            "🔹 **Tu número de empleado** \n"
+            "🔹 **La tienda donde ocurre la incidencia**\n"
+            "🔹 **La sección/departamento**\n\n"
+            "Puedes darme todos los datos de una vez o uno por uno. ¿Cómo prefieres empezar?"
+        )
+        
+        return Command(
+            update={
+                "messages": [AIMessage(content=mensaje)],
+                "current_node": "identificacion_manual",
+                "identification_started": True
+            }
+        )
+
+    def _es_correccion(self, user_input: str) -> bool:
+        """Detectar si el usuario quiere corregir un dato"""
+        palabras_correccion = [
+            "cambiar", "corregir", "modificar", "error", "mal", 
+            "no es", "incorrecto", "rectificar", "actualizar"
+        ]
+        return any(palabra in user_input.lower() for palabra in palabras_correccion)
+
+    async def _manejar_correccion(self, state: EroskiState, user_input: str) -> Command:
+        """Manejar corrección de datos"""
+        # Detectar qué quiere corregir
+        if "nombre" in user_input.lower():
+            campo_a_corregir = "employee_name"
+        elif "numero" in user_input.lower() or "empleado" in user_input.lower():
+            campo_a_corregir = "employee_id"
+        elif "tienda" in user_input.lower():
+            campo_a_corregir = "incident_store_name"
+        elif "seccion" in user_input.lower() or "departamento" in user_input.lower():
+            campo_a_corregir = "incident_department"
+        else:
+            campo_a_corregir = None
+
+        # Limpiar campo y solicitar nuevo valor
+        updates = {}
+        if campo_a_corregir:
+            updates[campo_a_corregir] = None
+            if campo_a_corregir == "incident_store_name":
+                updates["store_id"] = None
+
+        resumen = self._mostrar_resumen_estado(state)
+        mensaje = f"Entendido, vamos a corregir ese dato.\n\n{resumen}\n\n¿Cuál es el valor correcto?"
+        
+        updates["messages"] = [AIMessage(content=mensaje)]
+        
+        return Command(update=updates)
+
+    async def _extraer_datos_usuario(self, user_input: str) -> Dict[str, Any]:
+        """Extraer datos del mensaje del usuario usando LLM"""
+        prompt_extraccion = ChatPromptTemplate.from_messages([
+            ("system", """Eres un asistente especializado en extraer información de empleados de Eroski.
+
+Extrae y NORMALIZA los siguientes datos del mensaje del usuario:
+- nombre: nombre completo de la persona
+- numero_empleado: código alfanumérico del empleado (ej: "G101", "1234", "A001")
+- tienda: nombre de la tienda (normalizar a nombres conocidos)
+- seccion: sección o departamento (normalizar y corregir errores)
+
+NORMALIZACIÓN DE SECCIONES:
+- "pescaderíaaa", "pescaderia", "pescado" → "Pescadería" 
+- "carniceria", "carne" → "Carnicería"
+- "panaderia", "pan" → "Panadería"
+- "fruteria", "fruta" → "Frutería"
+- "charcuteria" → "Charcutería"
+- "caja", "cajas" → "Caja"
+
+EJEMPLOS:
+Entrada: "Javier Guerra, G101, de la tienda de Durango"
+Salida: {{"nombre": "Javier Guerra", "numero_empleado": "G101", "tienda": "Durango"}}
+
+Entrada: "Soy María, trabajo en panadería"
+Salida: {{"nombre": "María", "seccion": "Panadería"}}
+
+Entrada: "Pedro, pescaderíaaa"
+Salida: {{"nombre": "Pedro", "seccion": "Pescadería"}}
+
+RESPONDE EN JSON VÁLIDO:
+{{
+  "nombre": "valor_encontrado" o null,
+  "numero_empleado": "valor_encontrado" o null,
+  "tienda": "valor_encontrado" o null,
+  "seccion": "valor_encontrado" o null
+}}
+
+REGLAS IMPORTANTES:
+- NO inventes datos que no están en el mensaje
+- NORMALIZA las secciones corrigiendo errores ortográficos
+- Los números de empleado pueden ser alfanuméricos
+- Nombres de tienda pueden ser parciales (ej: "Durango" para "Center Durango")
+- Solo extrae lo que está explícitamente mencionado"""),
+            ("human", "Mensaje: {user_input}")
+        ])
+        
+        chain = prompt_extraccion | self.llm
+        response = await chain.ainvoke({"user_input": user_input})
+        
+        try:
+            # Limpiar respuesta y parsear JSON
+            content = response.content.strip()
+            if content.startswith("```json"):
+                content = content[7:-3]
+            elif content.startswith("```"):
+                content = content[3:-3]
+            
+            datos = json.loads(content)
+            
+            # Limpiar valores None explícitos y strings vacíos
+            datos_limpios = {}
+            for k, v in datos.items():
+                if v is not None and str(v).strip():
+                    datos_limpios[k] = str(v).strip()
+            
+            # Aplicar normalización adicional de secciones
+            if "seccion" in datos_limpios:
+                datos_limpios["seccion"] = self._normalizar_seccion(datos_limpios["seccion"])
+            
+            self.logger.info(f"📊 Datos extraídos: {datos_limpios}")
+            self.logger.info(f"📊 Datos extraídos: {datos_limpios}")
+            return datos_limpios
+            
+        except (json.JSONDecodeError, AttributeError) as e:
+            self.logger.warning(f"⚠️ Error parseando extracción: {e}, respuesta: {response.content}")
+            # Fallback con regex simple
+            return self._extraer_datos_fallback(user_input)
+
+    async def _procesar_confirmacion_seccion(self, state: EroskiState, user_input: str) -> Command:
+        """Procesar confirmación de sección pendiente"""
+        if not state.get("pending_section_confirmation"):
+            return await self._solicitar_datos_faltantes(state)
+        
+        # Usar tool de confirmación si está disponible
+        if self.confirmation_tool:
+            try:
+                # CORREGIDO: Usar directamente el método sin invoke
+                resultado_confirmacion = self.confirmation_tool.check_confirmation(user_input)
+                es_confirmacion = resultado_confirmacion == "si"
+                es_negacion = resultado_confirmacion == "no"
+                
+                self.logger.info(f"🔍 Resultado confirmación sección: '{resultado_confirmacion}' para entrada: '{user_input}'")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ Error usando confirmation_tool: {e}")
+                # Fallback simple MEJORADO
+                es_confirmacion = any(
+                    palabra in user_input.lower() 
+                    for palabra in ["sí", "si", "s", "yes", "y", "vale", "correcto", "exacto", "perfecto", "está bien", "correcta", "ok"]
+                )
+                es_negacion = any(
+                    palabra in user_input.lower()
+                    for palabra in ["no", "n", "nada", "incorrecto", "mal", "error", "negativo"]
+                )
+        else:
+            # Fallback simple si no hay confirmation_tool
+            es_confirmacion = any(
+                palabra in user_input.lower() 
+                for palabra in ["sí", "si", "yes", "vale", "correcto", "exacto", "perfecto", "está bien", "correcta"]
+            )
+            es_negacion = any(
+                palabra in user_input.lower()
+                for palabra in ["no", "nada", "incorrecto", "mal", "error"]
+            )
+        
+        if es_confirmacion:
+            # Confirmar sección
+            seccion_confirmada = state["pending_section_confirmation"]["suggested_section"]
+            
+            mensaje_confirmacion = f"✅ Sección confirmada: **{seccion_confirmada}**"
+            
+            # Actualizar estado
+            state_actualizado = state.copy()
+            state_actualizado.update({
+                "incident_department": seccion_confirmada,
+                "pending_section_confirmation": None,  # ¡CRÍTICO! Limpiar la confirmación pendiente
+            })
+            
+            self.logger.info("✅ Sección confirmada, limpiando pending_section_confirmation")
+            
+            # Verificar si ya está completo
+            if self._datos_completos(state_actualizado):
+                # Todo completo, finalizar
+                resumen = self._mostrar_resumen_estado(state_actualizado)
+                mensaje_final = (
+                    f"{mensaje_confirmacion}\n\n" +
+                    resumen + "\n\n" +
+                    "¡Perfecto! ✅ He recogido toda tu información. "
+                    "Ahora puedes proceder a reportar tu incidencia. ¿En qué puedo ayudarte hoy?"
+                )
+                
+                return Command(
+                    update={
+                        **state_actualizado,
+                        "messages": [AIMessage(content=mensaje_final)],
+                        "identification_complete": True,
+                        "manual_identification_completed": True,
+                        "authenticated": True,
+                        "current_node": "classify_query"
+                    }
+                )
+            else:
+                # Aún faltan datos, continuar
+                resumen = self._mostrar_resumen_estado(state_actualizado)
+                
+                # Determinar qué falta
+                if not state_actualizado.get("employee_name"):
+                    pregunta = "¿Cuál es tu nombre completo?"
+                elif not state_actualizado.get("employee_id"):
+                    pregunta = "¿Cuál es tu número de empleado?"
+                else:
+                    pregunta = "¿Hay algún dato que quieras corregir?"
+                
+                mensaje_completo = f"{mensaje_confirmacion}\n\n{resumen}\n\n{pregunta}"
+                
+                return Command(
+                    update={
+                        **state_actualizado,
+                        "messages": [AIMessage(content=mensaje_completo)]
+                    }
+                )
+            
+        elif es_negacion:
+            # Rechazar y solicitar nueva sección
+            mensaje = (
+                "Entendido. ¿Podrías decirme en qué sección trabajas? "
+                "Por ejemplo: Carnicería, Panadería, Pescadería, Caja, Frutería..."
+            )
+            
+            return Command(
+                update={
+                    "messages": [AIMessage(content=mensaje)],
+                    "pending_section_confirmation": None,
+                    "incident_department": None  # Limpiar la sección temporal
+                }
+            )
+        else:
+            # Respuesta ambigua - pedir aclaración
+            seccion_sugerida = state["pending_section_confirmation"]["suggested_section"]
+            mensaje = (
+                "No estoy seguro de tu respuesta. ¿Podrías confirmar con 'Sí' o 'No'?\n\n"
+                f"¿Es correcta la sección **{seccion_sugerida}**?"
+            )
+            
+            return Command(
+                update={
+                    "messages": [AIMessage(content=mensaje)]
+                }
+            )
+
+    async def _cargar_departamentos_desde_bd(self) -> List[Dict[str, Any]]:
+        """Cargar departamentos desde PostgreSQL"""
+        try:
+            settings = get_settings()
+            conn = await asyncpg.connect(settings.database.connection_string)
+            
+            try:
+                # Buscar tabla de departamentos
+                departamentos_result = await conn.fetch("""
+                    SELECT departamento 
+                    FROM departamento 
+                    ORDER BY departamento
+                """)
+                
+                if not departamentos_result:
+                    # Fallback: usar lista estática si no hay tabla
+                    self.logger.warning("⚠️ Tabla departamento vacía, usando lista estática")
+                    return self._cargar_departamentos_fallback()
+                
+                departamentos = []
+                for row in departamentos_result:
+                    departamentos.append({
+                        "nombre": row["departamento"]
+                    })
+                
+                self.logger.info(f"✅ Cargados {len(departamentos)} departamentos desde BD")
+                return departamentos
+                
+            finally:
+                await conn.close()
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error cargando departamentos desde BD: {e}")
+            return self._cargar_departamentos_fallback()
+
+    def _cargar_departamentos_fallback(self) -> List[Dict[str, Any]]:
+        """Cargar departamentos desde lista de fallback"""
+        departamentos_fallback = [
+            {"nombre": "Carnicería"}, {"nombre": "Panadería"}, {"nombre": "Pescadería"},
+            {"nombre": "Frutería"}, {"nombre": "Charcutería"}, {"nombre": "Caja"},
+            {"nombre": "Lácteos"}, {"nombre": "Bebidas"}, {"nombre": "Limpieza"},
+            {"nombre": "Perfumería"}, {"nombre": "Textil"}, {"nombre": "Electrónica"},
+            {"nombre": "Lencería"}, {"nombre": "Hogar"}, {"nombre": "Juguetería"},
+            {"nombre": "Librería"}, {"nombre": "Farmacia"}, {"nombre": "Óptica"}
+        ]
+        
+        self.logger.info(f"✅ Cargados {len(departamentos_fallback)} departamentos desde fallback")
+        return departamentos_fallback
+
+    async def _buscar_departamento_mas_parecido(self, nombre_usuario: str) -> Optional[Dict[str, Any]]:
+        """Buscar departamento más parecido usando fuzzy matching + LLM fallback"""
+        if not self._departamentos_cache or not nombre_usuario:
+            return None
+        
+        nombre_limpio = nombre_usuario.lower().strip()
+        
+        # 1. Buscar coincidencia exacta primero (MÁS RÁPIDO)
+        self.logger.info(f"🔍 Paso 1: Buscando coincidencia exacta para '{nombre_limpio}'")
+        for dept in self._departamentos_cache:
+            if nombre_limpio == dept["nombre"].lower():
+                self.logger.info(f"✅ Coincidencia exacta encontrada: '{dept['nombre']}'")
+                return dept
+        
+        # 2. Buscar con reglas hardcodeadas (RÁPIDO)
+        self.logger.info(f"🔍 Paso 2: Buscando con reglas hardcodeadas")
+        mejores_coincidencias = []
+        
+        for dept in self._departamentos_cache:
+            nombre_dept = dept["nombre"].lower()
+            
+            # Coincidencia por substring
+            if nombre_limpio in nombre_dept or nombre_dept in nombre_limpio:
+                score = len(nombre_limpio) / len(nombre_dept)
+                mejores_coincidencias.append((dept, score))
+                self.logger.info(f"📊 Substring match: '{nombre_dept}' (score: {score:.2f})")
+            
+            # Similitudes semánticas hardcodeadas
+            elif self._son_departamentos_similares(nombre_limpio, nombre_dept):
+                mejores_coincidencias.append((dept, 0.9))
+                self.logger.info(f"📊 Similitud hardcodeada: '{nombre_dept}' (score: 0.9)")
+            
+            # Similitud por palabras clave
+            elif self._tienen_palabras_clave_similares(nombre_limpio, nombre_dept):
+                mejores_coincidencias.append((dept, 0.8))
+                self.logger.info(f"📊 Palabras clave: '{nombre_dept}' (score: 0.8)")
+        
+        # Si encontró algo con reglas hardcodeadas, usar eso
+        if mejores_coincidencias:
+            mejores_coincidencias.sort(key=lambda x: x[1], reverse=True)
+            mejor_dept = mejores_coincidencias[0][0]
+            self.logger.info(f"✅ Reglas hardcodeadas encontraron: '{nombre_usuario}' → '{mejor_dept['nombre']}'")
+            return mejor_dept
+        
+        # 3. 🧠 FALLBACK LLM: Comparación semántica inteligente (LENTO pero INTELIGENTE)
+        self.logger.info(f"🧠 Paso 3: Usando LLM para comparación semántica (fallback)")
+        return await self._buscar_departamento_con_llm(nombre_usuario)
+
+    async def _buscar_departamento_con_llm(self, nombre_usuario: str) -> Optional[Dict[str, Any]]:
+        """Fallback LLM para encontrar departamento más similar semánticamente"""
+        try:
+            # Crear lista de departamentos disponibles
+            departamentos_disponibles = [dept["nombre"] for dept in self._departamentos_cache]
+            departamentos_str = ", ".join(departamentos_disponibles)
+            
+            prompt = f"""Eres un experto en departamentos de supermercados.
+
+El usuario escribió: "{nombre_usuario}"
+
+Departamentos disponibles en la base de datos:
+{departamentos_str}
+
+Tu tarea: Encontrar qué departamento de la lista es MÁS SIMILAR SEMÁNTICAMENTE al que escribió el usuario.
+
+EJEMPLOS DE SIMILITUDES:
+- "pasteleria" → "Panadería" (ambos sobre repostería/pan/dulces)
+- "carne" → "Carnicería" (venta de carne)
+- "pescado" → "Pescadería" (venta de pescado)
+- "libros" → "Librería" (venta de libros)
+- "juguetes" → "Juguetería" (venta de juguetes)
+- "medicinas" → "Farmacia" (medicamentos)
+- "gafas" → "Óptica" (gafas y lentes)
+- "ropa" → "Textil" (vestimenta)
+
+INSTRUCCIONES:
+1. Piensa en la función/propósito del departamento que escribió el usuario
+2. Encuentra el departamento de la lista que tiene la función más similar
+3. Responde EXACTAMENTE con el nombre del departamento de la lista
+4. Si NO hay ninguna similitud razonable, responde "NINGUNO"
+
+Respuesta:"""
+
+            response = await self.llm.ainvoke(prompt)
+            resultado_llm = response.content.strip()
+            
+            self.logger.info(f"🧠 LLM sugiere: '{resultado_llm}' para entrada '{nombre_usuario}'")
+            
+            # Verificar que el resultado del LLM está en la lista de departamentos
+            if resultado_llm == "NINGUNO":
+                self.logger.info("🧠 LLM no encontró similitud")
+                return None
+            
+            # Buscar el departamento sugerido por el LLM
+            for dept in self._departamentos_cache:
+                if dept["nombre"].lower() == resultado_llm.lower():
+                    self.logger.info(f"✅ LLM encontró match: '{nombre_usuario}' → '{dept['nombre']}'")
+                    return dept
+            
+            # Si el LLM devolvió algo que no está en la lista, buscar el más parecido
+            for dept in self._departamentos_cache:
+                if resultado_llm.lower() in dept["nombre"].lower() or dept["nombre"].lower() in resultado_llm.lower():
+                    self.logger.info(f"✅ LLM encontró match parcial: '{nombre_usuario}' → '{dept['nombre']}'")
+                    return dept
+            
+            self.logger.warning(f"⚠️ LLM devolvió '{resultado_llm}' que no está en la lista de departamentos")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en LLM fallback: {e}")
+            return None
+
+    def _son_departamentos_similares(self, input_dept: str, db_dept: str) -> bool:
+        """Detectar departamentos semánticamente similares"""
+        similitudes_semanticas = {
+            # Pastelería y Panadería son muy similares
+            "pasteleria": ["panadería", "panaderia"],
+            "pasteles": ["panadería", "panaderia"],
+            "reposteria": ["panadería", "panaderia"],
+            
+            # Variaciones ortográficas
+            "lenceria": ["lencería"],
+            "lenceriaaa": ["lencería"],
+            "panaderia": ["panadería"],
+            "carniceria": ["carnicería"],
+            "pescaderia": ["pescadería"],
+            "fruteria": ["frutería"],
+            "charcuteria": ["charcutería"],
+            "perfumeria": ["perfumería"],
+            "jugueteria": ["juguetería"],
+            "libreria": ["librería"],
+            "electronica": ["electrónica"],
+            
+            # Sinónimos comunes
+            "carne": ["carnicería"],
+            "pescado": ["pescadería"],
+            "fruta": ["frutería"],
+            "pan": ["panadería"],
+            "libros": ["librería"],
+            "juguetes": ["juguetería"],
+            "ropa": ["textil"],
+            "vestir": ["textil"],
+            "electrodomesticos": ["electrónica"],
+            "electro": ["electrónica"],
+            "medicinas": ["farmacia"],
+            "gafas": ["óptica"],
+            "lentes": ["óptica"]
+        }
+        
+        input_clean = input_dept.lower().strip()
+        db_clean = db_dept.lower().strip()
+        
+        # Buscar en las similitudes
+        if input_clean in similitudes_semanticas:
+            return any(similar in db_clean for similar in similitudes_semanticas[input_clean])
+        
+        return False
+
+    def _tienen_palabras_clave_similares(self, input_dept: str, db_dept: str) -> bool:
+        """Verificar si tienen palabras clave similares"""
+        input_clean = input_dept.lower().strip()
+        db_clean = db_dept.lower().strip()
+        
+        # Extraer raíces de palabras
+        if len(input_clean) >= 4 and len(db_clean) >= 4:
+            # Comparar las primeras 4 letras (raíz común)
+            return input_clean[:4] == db_clean[:4]
+        
+        return False
+
+    def _extraer_datos_fallback(self, user_input: str) -> Dict[str, Any]:
+        """Fallback para extraer datos usando regex cuando falla el LLM"""
+        self.logger.info(f"🔄 EJECUTANDO FALLBACK para: '{user_input}'")
+        datos = {}
+        user_input_lower = user_input.lower()
+        
+        # Buscar número de empleado (alfanumérico de 1-4 caracteres)
+        numero_match = re.search(r'\b[A-Za-z]?\d{1,4}\b|\b\d{1,4}[A-Za-z]?\b', user_input)
+        if numero_match:
+            datos["numero_empleado"] = numero_match.group()
+            self.logger.info(f"✅ Número empleado detectado: {datos['numero_empleado']}")
+        
+        # Buscar nombres de tienda conocidas
+        tienda_keywords = ["durango", "bilbondo", "baracaldo", "amorebieta", "leioa"]
+        for keyword in tienda_keywords:
+            if keyword in user_input_lower:
+                datos["tienda"] = keyword.title()
+                self.logger.info(f"✅ Tienda detectada: {datos['tienda']}")
+                break
+        
+        # BÚSQUEDA AGRESIVA DE DEPARTAMENTOS/SECCIONES
+        self.logger.info("🔍 Buscando departamentos en fallback...")
+        departamentos_keywords = [
+            # Departamentos con variaciones ortográficas (incluyendo pastelería)
+            ("pasteleria", "pasteles", "reposteria"),  # ¡NUEVO!
+            ("lenceria", "lenceriaaa", "lencerías"), 
+            ("panaderia", "panadería", "pan"),
+            ("carniceria", "carnicería", "carne"),
+            ("pescaderia", "pescadería", "pescaderiaaa", "pescado"),
+            ("fruteria", "frutería", "fruta"),
+            ("charcuteria", "charcutería"),
+            ("electronica", "electrónica", "electro"),
+            ("perfumeria", "perfumería"),
+            ("jugueteria", "juguetería", "juguetes"),
+            ("libreria", "librería", "libros"),
+            ("farmacia", "farmacias", "medicinas"),
+            ("optica", "óptica", "gafas", "lentes"),
+            ("textil", "ropa", "vestir"),
+            ("hogar", "casa", "decoración"),
+            ("caja", "cajas", "cajero", "cajera"),
+            ("lacteos", "lácteos", "leche"),
+            ("bebidas", "refrescos"),
+            ("limpieza", "detergentes"),
+            ("congelados", "congelador"),
+            ("conservas", "latas"),
+            ("aceites", "aceite"),
+            ("vinos", "vino", "alcohol"),
+            ("cereales", "cereal"),
+            ("dulces", "caramelos", "golosinas")
+        ]
+        
+        for keywords in departamentos_keywords:
+            for keyword in keywords:
+                self.logger.info(f"🔍 Buscando '{keyword}' en '{user_input_lower}'")
+                if keyword in user_input_lower:
+                    # Extraer tal como está en el input del usuario para posterior procesamiento
+                    datos["seccion"] = keyword
+                    self.logger.info(f"🎯 Departamento detectado en fallback: '{keyword}' del input '{user_input}'")
+                    break
+            if "seccion" in datos:
+                break
+        
+        # Si no encontró nada específico, buscar palabras que puedan ser departamentos
+        if "seccion" not in datos:
+            self.logger.info("🔍 Buscando patrones de departamentos...")
+            # Buscar palabras que terminen en -ería, -ía, etc.
+            palabras = user_input.split()
+            for palabra in palabras:
+                palabra_clean = palabra.lower().strip('.,!?')
+                self.logger.info(f"🔍 Analizando palabra: '{palabra_clean}'")
+                if (len(palabra_clean) > 4 and 
+                    (palabra_clean.endswith('eria') or 
+                     palabra_clean.endswith('ería') or
+                     palabra_clean.endswith('ia') or
+                     palabra_clean.endswith('ía') or
+                     palabra_clean in ['caja', 'textil', 'hogar', 'farmacia', 'optica'])):
+                    datos["seccion"] = palabra_clean
+                    self.logger.info(f"🎯 Departamento detectado por patrón: '{palabra_clean}'")
+                    break
+        
+        # DETECCIÓN ESPECIAL: Si es una sola palabra y parece departamento
+        if not datos.get("seccion") and len(user_input.strip().split()) == 1:
+            word = user_input.strip()
+            self.logger.info(f"🔍 Verificando palabra única: '{word}'")
+            if self._parece_departamento(word):
+                datos["seccion"] = word
+                self.logger.info(f"🎯 Departamento detectado como palabra única: '{word}'")
+        
+        # Intentar extraer nombre (primera palabra que empiece con mayúscula)
+        if not datos.get("seccion"):  # Solo si no es un departamento
+            palabras = user_input.split()
+            nombre_candidatos = []
+            for palabra in palabras:
+                if palabra[0].isupper() and palabra.isalpha() and len(palabra) > 2:
+                    nombre_candidatos.append(palabra)
+            
+            if len(nombre_candidatos) >= 2:
+                datos["nombre"] = " ".join(nombre_candidatos[:2])  # Nombre y apellido
+            elif len(nombre_candidatos) == 1:
+                datos["nombre"] = nombre_candidatos[0]
+        
+        self.logger.info(f"📊 Datos extraídos (fallback): {datos}")
+        return datos
+
+    def _actualizar_estado_con_datos(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> EroskiState:
+        """Actualizar estado con datos extraídos"""
+        state_copia = state.copy()
+        
+        # Mapear campos extraídos al estado
+        if "nombre" in datos_extraidos:
+            # El nombre puede incluir apellido ya
+            state_copia["employee_name"] = datos_extraidos["nombre"]
+        
+        if "numero_empleado" in datos_extraidos:
+            state_copia["employee_id"] = datos_extraidos["numero_empleado"]
+        
+        if "tienda" in datos_extraidos:
+            state_copia["incident_store_name"] = datos_extraidos["tienda"]
+        
+        if "seccion" in datos_extraidos:
+            state_copia["incident_department"] = datos_extraidos["seccion"]
+        
+        self.logger.info(f"📊 Estado actualizado: nombre={state_copia.get('employee_name')}, "
+                        f"numero={state_copia.get('employee_id')}, "
+                        f"tienda={state_copia.get('incident_store_name')}, "
+                        f"seccion={state_copia.get('incident_department')}")
+        
+        return state_copia
+
+    def _necesita_confirmacion_departamento(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
+        """Verificar si necesita confirmación de departamento"""
+        return (
+            "seccion" in datos_extraidos and 
+            not state.get("incident_department") and
+            not state.get("pending_section_confirmation") and  # Evitar bucles
+            self._departamentos_cache is not None
+        )
+
+    async def _solicitar_confirmacion_departamento(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
+        """Solicitar confirmación de departamento encontrado"""
+        nombre_usuario = datos_extraidos["seccion"]
+        departamento_encontrado = self._buscar_departamento_mas_parecido(nombre_usuario)
+        
+        # Actualizar estado con los datos extraídos ANTES de solicitar confirmación
+        state_con_datos = self._actualizar_estado_con_datos(state, datos_extraidos)
+        
+        if departamento_encontrado:
+            resumen = self._mostrar_resumen_estado(state_con_datos)
+            
+            mensaje = (
+                f"{resumen}\n"
+                f"🧭 **Departamento detectado:** {departamento_encontrado['nombre']}\n\n"
+                f"He encontrado este departamento que coincide con '{nombre_usuario}':\n"
+                f"🏢 **{departamento_encontrado['nombre']}**\n\n"
+                f"¿Es correcto este departamento? (Sí/No)"
+            )
+            
+            updates = {
+                "messages": [AIMessage(content=mensaje)],
+                "pending_section_confirmation": {
+                    "user_input": nombre_usuario,
+                    "suggested_section": departamento_encontrado['nombre']
+                },
+                # Preservar todos los datos ya extraídos
+                "employee_name": state_con_datos.get("employee_name"),
+                "employee_id": state_con_datos.get("employee_id"),
+                "incident_store_name": state_con_datos.get("incident_store_name"),
+                "store_id": state_con_datos.get("store_id")
+            }
+        else:
+            # No se encontró departamento similar
+            resumen = self._mostrar_resumen_estado(state_con_datos)
+            
+            mensaje = (
+                f"{resumen}\n\n"
+                f"No encontré un departamento que coincida exactamente con '{nombre_usuario}'.\n\n"
+                f"Estos son algunos departamentos disponibles:\n"
+            )
+            
+            # Mostrar lista de departamentos disponibles
+            for i, dept in enumerate(self._departamentos_cache[:10], 1):  # Máximo 10
+                mensaje += f"{i}. {dept['nombre']}\n"
+            
+            mensaje += "\n¿Podrías especificar el nombre exacto del departamento?"
+            
+            updates = {
+                "messages": [AIMessage(content=mensaje)],
+                "pending_department_selection": True,
+                # Preservar todos los datos ya extraídos
+                "employee_name": state_con_datos.get("employee_name"),
+                "employee_id": state_con_datos.get("employee_id"),
+                "incident_store_name": state_con_datos.get("incident_store_name"),
+                "store_id": state_con_datos.get("store_id")
+            }
+        
+        return Command(update=updates)
+
+    async def _cargar_tiendas_desde_bd(self) -> List[Dict[str, Any]]:
+        """Cargar maestro de tiendas desde PostgreSQL"""
+        try:
+            settings = get_settings()
+            conn = await asyncpg.connect(settings.database.connection_string)
+            
+            try:
+                # Buscar tabla de tiendas (puede tener diferentes nombres)
+                tiendas_result = await conn.fetch("""
+                    SELECT codigo_tienda, nombre_tienda 
+                    FROM maestro_tiendas 
+                    ORDER BY nombre_tienda
+                """)
+                
+                if not tiendas_result:
+                    # Fallback: usar JSON estático si no hay tabla
+                    self.logger.warning("⚠️ Tabla maestro_tiendas vacía, usando JSON estático")
+                    return self._cargar_tiendas_desde_json()
+                
+                tiendas = []
+                for row in tiendas_result:
+                    tiendas.append({
+                        "codigo": row["codigo_tienda"],
+                        "nombre": row["nombre_tienda"]
+                    })
+                
+                self.logger.info(f"✅ Cargadas {len(tiendas)} tiendas desde BD")
+                return tiendas
+                
+            finally:
+                await conn.close()
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error cargando tiendas desde BD: {e}")
+            return self._cargar_tiendas_desde_json()
+
+    def _cargar_tiendas_desde_json(self) -> List[Dict[str, Any]]:
+        """Cargar tiendas desde JSON de fallback"""
+        try:
+            from pathlib import Path
+            json_path = Path("scripts/eroski_maestro_tiendas.json")
+            
+            if json_path.exists():
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                tiendas = []
+                for nombre, codigo in data.get("tiendas", {}).items():
+                    tiendas.append({"codigo": str(codigo), "nombre": nombre})
+                
+                self.logger.info(f"✅ Cargadas {len(tiendas)} tiendas desde JSON")
+                return tiendas
+            else:
+                self.logger.error("❌ No se encontró archivo de tiendas")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error cargando JSON de tiendas: {e}")
+            return []
+
+    def _buscar_tienda_mas_parecida(self, nombre_usuario: str) -> Optional[Dict[str, Any]]:
+        """Buscar tienda más parecida usando fuzzy matching"""
+        if not self._tiendas_cache or not nombre_usuario:
+            return None
+        
+        nombre_limpio = nombre_usuario.lower().strip()
+        
+        # Buscar coincidencia exacta primero
+        for tienda in self._tiendas_cache:
+            if nombre_limpio == tienda["nombre"].lower():
+                return tienda
+        
+        # Buscar coincidencia parcial
+        mejores_coincidencias = []
+        for tienda in self._tiendas_cache:
+            nombre_tienda = tienda["nombre"].lower()
+            
+            # Calcular score de similitud simple
+            palabras_usuario = nombre_limpio.split()
+            palabras_tienda = nombre_tienda.split()
+            
+            coincidencias = 0
+            for palabra_usuario in palabras_usuario:
+                for palabra_tienda in palabras_tienda:
+                    if palabra_usuario in palabra_tienda or palabra_tienda in palabra_usuario:
+                        coincidencias += 1
+            
+            if coincidencias > 0:
+                score = coincidencias / max(len(palabras_usuario), len(palabras_tienda))
+                mejores_coincidencias.append((tienda, score))
+        
+        # Retornar la mejor coincidencia
+        if mejores_coincidencias:
+            mejores_coincidencias.sort(key=lambda x: x[1], reverse=True)
+            return mejores_coincidencias[0][0]
+        
+        return None
+
+    def _necesita_confirmacion_tienda(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
+        """Verificar si necesita confirmación de tienda"""
+        return (
+            "tienda" in datos_extraidos and 
+            not state.get("store_id") and
+            self._tiendas_cache is not None
+        )
+
+    async def _solicitar_confirmacion_tienda(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
+        """Solicitar confirmación de tienda encontrada usando confirmation_tool"""
+        nombre_usuario = datos_extraidos["tienda"]
+        tienda_encontrada = self._buscar_tienda_mas_parecida(nombre_usuario)
+        
+        # IMPORTANTE: Actualizar estado con los datos extraídos ANTES de solicitar confirmación
+        state_con_datos = self._actualizar_estado_con_datos(state, datos_extraidos)
+        
+        if tienda_encontrada:
+            mensaje = (
+                f"He encontrado esta tienda que coincide con '{nombre_usuario}':\n\n"
+                f"🏬 **{tienda_encontrada['nombre']}** (Código: {tienda_encontrada['codigo']})\n\n"
+                f"¿Es correcta esta tienda? (Sí/No)"
+            )
+            
+            updates = {
+                "messages": [AIMessage(content=mensaje)],
+                "pending_store_confirmation": {
+                    "user_input": nombre_usuario,
+                    "suggested_store": tienda_encontrada
+                },
+                # Preservar los datos ya extraídos
+                "employee_name": state_con_datos.get("employee_name"),
+                "employee_id": state_con_datos.get("employee_id"),
+                "incident_department": state_con_datos.get("incident_department")
+            }
+        else:
+            mensaje = (
+                f"No encontré una tienda que coincida exactamente con '{nombre_usuario}'.\n\n"
+                f"Estas son las tiendas disponibles:\n"
+            )
+            
+            # Mostrar lista de tiendas disponibles
+            for i, tienda in enumerate(self._tiendas_cache[:10], 1):  # Máximo 10
+                mensaje += f"{i}. {tienda['nombre']}\n"
+            
+            mensaje += "\n¿Podrías especificar el nombre exacto o número de la tienda?"
+            
+            updates = {
+                "messages": [AIMessage(content=mensaje)],
+                "pending_store_selection": True,
+                # Preservar los datos ya extraídos
+                "employee_name": state_con_datos.get("employee_name"),
+                "employee_id": state_con_datos.get("employee_id"),
+                "incident_department": state_con_datos.get("incident_department")
+            }
+        
+        return Command(update=updates)
+
+    def _datos_completos(self, state: EroskiState) -> bool:
+        """Verificar si todos los datos están completos"""
+        campos_requeridos = [
+            "employee_name", "employee_id", 
+            "incident_store_name", "store_id", 
+            "incident_department"
+        ]
+        
+        return all(
+            state.get(campo) and str(state.get(campo)).strip() 
+            for campo in campos_requeridos
+        )
+
+    async def _finalizar_identificacion(self, state: EroskiState) -> Command:
+        """Finalizar proceso de identificación"""
+        resumen = self._mostrar_resumen_estado(state)
+        
+        mensaje = (
+            f"¡Perfecto! ✅ He recogido toda tu información:\n\n"
+            f"{resumen}\n\n"
+            f"Ahora puedes proceder a reportar tu incidencia. "
+            f"¿En qué puedo ayudarte hoy?"
+        )
+        
+        return Command(
+            update={
+                "messages": [AIMessage(content=mensaje)],
+                "identification_complete": True,
+                "manual_identification_completed": True,
+                "authenticated": True,  # Marcar como autenticado
+                "current_node": "classify_query"  # Siguiente nodo
+            }
+        )
+
+    async def _solicitar_datos_faltantes(self, state: EroskiState) -> Command:
+        """Solicitar datos que faltan"""
+        resumen = self._mostrar_resumen_estado(state)
+        
+        # Determinar qué dato solicitar siguiente
+        if not state.get("employee_name"):
+            pregunta = "¿Cuál es tu nombre completo?"
+        elif not state.get("employee_id"):
+            pregunta = "¿Cuál es tu número de empleado?"
+        elif not state.get("incident_store_name") or not state.get("store_id"):
+            pregunta = "¿En qué tienda ocurre la incidencia? (ej: Hipermercado Bilbondo, Eroski Durango)"
+        elif not state.get("incident_department"):
+            pregunta = "¿En qué sección trabajas? (ej: Carnicería, Panadería, Caja, Pescadería)"
+        else:
+            pregunta = "¿Hay algún dato que quieras corregir?"
+        
+        mensaje = f"{resumen}\n\n{pregunta}"
+        
+        return Command(
+            update={
+                "messages": [AIMessage(content=mensaje)]
+            }
+        )
+
+    def _mostrar_resumen_estado(self, state: EroskiState) -> str:
+        """Mostrar resumen de datos recogidos"""
+        datos_recogidos = []
+        
+        if state.get("employee_name"):
+            datos_recogidos.append(f"👤 **Nombre:** {state['employee_name']}")
+        
+        if state.get("employee_id"):
+            datos_recogidos.append(f"🆔 **Nº Empleado:** {state['employee_id']}")
+        
+        if state.get("incident_store_name"):
+            store_info = state["incident_store_name"]
+            if state.get("store_id"):
+                store_info += f" (Código: {state['store_id']})"
+            datos_recogidos.append(f"🏬 **Tienda:** {store_info}")
+        
+        if state.get("incident_department"):
+            datos_recogidos.append(f"🧭 **Sección:** {state['incident_department']}")
+        
+        if datos_recogidos:
+            return "**Datos recogidos hasta ahora:**\n" + "\n".join(datos_recogidos)
+        else:
+            return "**Datos recogidos:** Ninguno aún"
+
+    async def _manejar_error(self, state: EroskiState, error_msg: str) -> Command:
+        """Manejar errores durante la identificación"""
+        mensaje = (
+            "❌ He tenido un problema técnico. "
+            "Por favor, puedes repetir tu información de nuevo. "
+            "Necesito tu nombre, número de empleado, tienda y sección."
+        )
+        
+        return Command(
+            update={
+                "messages": [AIMessage(content=mensaje)],
+                "identification_error": error_msg,
+                "error_count": state.get("error_count", 0) + 1
+            }
+        )
+
+    async def _procesar_confirmacion_tienda(self, state: EroskiState, user_input: str) -> Command:
+        """Procesar confirmación de tienda pendiente usando confirmation_tool"""
+        if not state.get("pending_store_confirmation"):
+            return await self._solicitar_datos_faltantes(state)
+        
+        # Usar tool de confirmación si está disponible
+        if self.confirmation_tool:
+            try:
+                # CORREGIDO: Usar directamente el método sin invoke
+                resultado_confirmacion = self.confirmation_tool.check_confirmation(user_input)
+                es_confirmacion = resultado_confirmacion == "si"
+                es_negacion = resultado_confirmacion == "no"
+                
+                self.logger.info(f"🔍 Resultado confirmación: '{resultado_confirmacion}' para entrada: '{user_input}'")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️ Error usando confirmation_tool: {e}")
+                # Fallback simple MEJORADO
+                es_confirmacion = any(
+                    palabra in user_input.lower() 
+                    for palabra in ["sí", "si", "s", "yes", "y", "vale", "correcto", "exacto", "perfecto", "está bien", "correcta", "ok"]
+                )
+                es_negacion = any(
+                    palabra in user_input.lower()
+                    for palabra in ["no", "n", "nada", "incorrecto", "mal", "error", "negativo"]
+                )
+        else:
+            # Fallback simple si no hay confirmation_tool
+            es_confirmacion = any(
+                palabra in user_input.lower() 
+                for palabra in ["sí", "si", "yes", "vale", "correcto", "exacto", "perfecto", "está bien", "correcta"]
+            )
+            es_negacion = any(
+                palabra in user_input.lower()
+                for palabra in ["no", "nada", "incorrecto", "mal", "error"]
+            )
+        
+        if es_confirmacion:
+            # Confirmar tienda
+            tienda_confirmada = state["pending_store_confirmation"]["suggested_store"]
+            
+            mensaje_confirmacion = f"✅ Tienda confirmada: **{tienda_confirmada['nombre']}** (Código: {tienda_confirmada['codigo']})"
+            
+            # CRÍTICO: Actualizar estado completo manteniendo datos existentes
+            state_actualizado = state.copy()
+            state_actualizado.update({
+                "incident_store_name": tienda_confirmada["nombre"],
+                "store_id": tienda_confirmada["codigo"],
+                "pending_store_confirmation": None,  # ¡CRÍTICO! Limpiar confirmación pendiente
+                # Mantener datos existentes del estado
+                "employee_name": state.get("employee_name"),
+                "employee_id": state.get("employee_id"),
+                "incident_department": state.get("incident_department")
+            })
+            
+            self.logger.info("✅ Tienda confirmada, limpiando pending_store_confirmation")
+            
+            # NUEVO: Continuar automáticamente con el flujo
+            # Primero mostrar confirmación, luego solicitar datos faltantes
+            if self._datos_completos(state_actualizado):
+                # Si ya está todo completo, finalizar
+                mensaje_final = (
+                    f"{mensaje_confirmacion}\n\n" +
+                    self._mostrar_resumen_estado(state_actualizado) + "\n\n" +
+                    "¡Perfecto! ✅ Todos los datos están completos."
+                )
+                
+                return Command(
+                    update={
+                        **state_actualizado,
+                        "messages": [AIMessage(content=mensaje_final)],
+                        "identification_complete": True,
+                        "authenticated": True
+                    }
+                )
+            else:
+                # Hay datos faltantes, continuar solicitándolos
+                resumen = self._mostrar_resumen_estado(state_actualizado)
+                
+                # Determinar qué dato falta
+                if not state_actualizado.get("incident_department"):
+                    pregunta = "¿En qué sección trabajas? (ej: Carnicería, Panadería, Caja, Pescadería)"
+                else:
+                    pregunta = "¿Hay algún dato que quieras corregir?"
+                
+                mensaje_completo = f"{mensaje_confirmacion}\n\n{resumen}\n\n{pregunta}"
+                
+                return Command(
+                    update={
+                        **state_actualizado,
+                        "messages": [AIMessage(content=mensaje_completo)]
+                    }
+                )
+            
+        elif es_negacion:
+            # Rechazar y solicitar nueva tienda
+            mensaje = (
+                "Entendido. ¿Podrías decirme el nombre correcto de la tienda? "
+                "Puedes usar nombres como 'Hipermercado Bilbondo' o 'Center Durango'."
+            )
+            
+            return Command(
+                update={
+                    "messages": [AIMessage(content=mensaje)],
+                    "pending_store_confirmation": None
+                }
+            )
+        else:
+            # Respuesta ambigua - pedir aclaración
+            mensaje = (
+                "No estoy seguro de tu respuesta. ¿Podrías confirmar con 'Sí' o 'No'?\n\n"
+                f"¿Es correcta la tienda **{state['pending_store_confirmation']['suggested_store']['nombre']}**?"
+            )
+            
+            return Command(
+                update={
+                    "messages": [AIMessage(content=mensaje)]
+                }
+            )
+
+
+# =============================================================================
+# FUNCIÓN WRAPPER PARA LANGGRAPH
+# =============================================================================
+
+async def identificacion_manual_node(state: EroskiState) -> Command:
+    """
+    Función wrapper para usar el nodo en LangGraph.
+    
+    Args:
+        state: Estado actual de EroskiState
+        
+    Returns:
+        Command con estado actualizado
+    """
+    node = IdentificacionManualNode()
+    return await node.execute(state)
+
+
+# =============================================================================
+# FUNCIONES DE UTILIDAD ADICIONALES
+# =============================================================================
+
+def validar_numero_empleado(numero: str) -> bool:
+    """Validar formato de número de empleado"""
+    if not numero or not isinstance(numero, str):
+        return False
+    
+    numero = numero.strip()
+    # Aceptar números de 1 a 4 dígitos o códigos alfanuméricos
+    return len(numero) <= 4 and numero.isalnum()
+
+
+def normalizar_nombre_tienda(nombre: str) -> str:
+    """Normalizar nombre de tienda para búsqueda"""
+    if not nombre:
+        return ""
+    
+    # Limpiar y normalizar
+    nombre = nombre.strip().lower()
+    
+    # Eliminar prefijos comunes
+    prefijos = ["eroski", "hipermercado", "supermercado", "center", "city"]
+    for prefijo in prefijos:
+        if nombre.startswith(prefijo):
+            nombre = nombre[len(prefijo):].strip()
+    
+    return nombre
+
+
+def extraer_campos_de_texto(texto: str) -> Dict[str, str]:
+    """Extraer campos usando regex como fallback"""
+    campos = {}
+    
+    # Regex para email
+    email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', texto)
+    if email_match:
+        campos["email"] = email_match.group()
+    
+    # Regex para número de empleado (1-4 dígitos)
+    numero_match = re.search(r'\b\d{1,4}\b', texto)
+    if numero_match:
+        campos["numero_empleado"] = numero_match.group()
+    
+    return campos
+
+
+# =============================================================================
+# TESTS BÁSICOS (OPCIONAL)
+# =============================================================================
+
+if __name__ == "__main__":
+    import asyncio
+    
+    async def test_basic_functionality():
+        """Test básico de funcionalidad"""
+        node = IdentificacionManualNode()
+        
+        # Estado inicial
+        state = {
+            "session_id": "test_session",
+            "messages": []
+        }
+        
+        # Test inicio
+        result = await node.execute(state)
+        print("✅ Test inicio completado")
+        
+        # Test extracción de datos
+        datos = await node._extraer_datos_usuario("Mi nombre es Juan Pérez, número 1234")
+        print(f"✅ Datos extraídos: {datos}")
+        
+        # Test búsqueda de tienda
+        node._tiendas_cache = [
+            {"codigo": "88", "nombre": "Hipermercado Bilbondo"},
+            {"codigo": "124", "nombre": "Center Durango"}
+        ]
+        
+        tienda = node._buscar_tienda_mas_parecida("bilbao")
+        print(f"✅ Tienda encontrada: {tienda}")
+    
+    # Ejecutar tests si se ejecuta directamente
+    asyncio.run(test_basic_functionality())

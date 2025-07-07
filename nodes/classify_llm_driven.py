@@ -86,10 +86,10 @@ class ClassificationDecision(BaseModel):
     new_information_provided: bool = Field(description="Si el usuario proporcionó información nueva", default=False)
     questions_already_asked: List[str] = Field(description="Preguntas que ya se han hecho anteriormente", default=[])
     stuck_in_loop: bool = Field(description="Si está atascado en un bucle sin progreso", default=False)
+
 class ClassifyConfirmationDecision(BaseModel):
     """DEPRECATED - Usar ConfirmationDecision de utils.incident_helpers"""
     pass
-
 
 # =============================================================================
 # NODO PRINCIPAL CLASSIFY LLM-DRIVEN
@@ -187,8 +187,6 @@ class LLMDrivenClassifyNode(BaseNode):
                 "confirmation_handler": None,
                 "persistence_manager": None
             }
-
-
 
     def get_required_fields(self) -> List[str]:
         return ["messages", "authenticated"]
@@ -1861,7 +1859,6 @@ Error técnico registrado para nuestro equipo de sistemas."""
                 "error_details": error_message
             }
         )
-
 
 # =============================================================================
 # FUNCIÓN PARA CREAR INSTANCIA
