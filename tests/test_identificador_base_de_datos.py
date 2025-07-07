@@ -733,6 +733,7 @@ class InteractiveNodeTester:
                 
                 # Ejecutar nodo
                 print("🤖 Procesando...")
+                print("🌄JGL antes de llamar al node")
                 result = await self.node.execute(self.current_state)
                 
                 # Actualizar estado

@@ -85,20 +85,30 @@ async def search_by_email_adapted(email: str) -> Dict[str, Any]:
         try:
             result = await conn.fetchrow("""
                 SELECT numero_empleado, nombre, apellido, email, 
-                       rol, departamento, activo
+                       rol, departamento, tienda, activo
                 FROM usuarios 
                 WHERE LOWER(email) = $1 AND activo = true
             """, email)
             
             if result:
                 logger.info(f"✅ Empleado encontrado por email: {result['nombre']} {result['apellido']}")
+
+                nombre = result['nombre'] or ''
+                apellido = result['apellido'] or ''
+                departamento = result['departamento'] or 'Sin asignar'
+                nombre_tienda = result['tienda'] or 'Sin asignar'
+                # Construir nombre completo de forma segura
+                nombre_completo = f"{nombre} {apellido}".strip()
+                if not nombre_completo:
+                    nombre_completo = 'Usuario sin nombre'
+                
                 return {
                     "found": True,
                     "numero_empleado": result['numero_empleado'],
-                    "nombre": f"{result['nombre']} {result['apellido']}",
+                    "nombre": nombre_completo,
                     "email": result['email'],
-                    "nombre_tienda": f"Eroski {result['departamento']}",  # Usar departamento como tienda
-                    "departamento": result['departamento']
+                    "nombre_tienda": nombre_tienda,  # Usar departamento como tienda
+                    "departamento": departamento
                 }
             else:
                 logger.info(f"❌ No se encontró empleado con email: {email}")
@@ -145,20 +155,29 @@ async def search_by_employee_id_adapted(employee_id: str) -> Dict[str, Any]:
         try:
             result = await conn.fetchrow("""
                 SELECT numero_empleado, nombre, apellido, email, 
-                       rol, departamento, activo
+                       rol, departamento, tienda, activo
                 FROM usuarios 
                 WHERE numero_empleado = $1 AND activo = true
             """, employee_id)
             
             if result:
+                nombre = result['nombre'] or ''
+                apellido = result['apellido'] or ''
+                departamento = result['departamento'] or 'Sin asignar'
+                nombre_tienda = result['tienda'] or 'Sin asignar'
+
+                # Construir nombre completo de forma segura
+                nombre_completo = f"{nombre} {apellido}".strip()
+                if not nombre_completo:
+                    nombre_completo = 'Usuario sin nombre'
                 logger.info(f"✅ Empleado encontrado por ID: {result['nombre']} {result['apellido']}")
                 return {
                     "found": True,
                     "numero_empleado": result['numero_empleado'],
-                    "nombre": f"{result['nombre']} {result['apellido']}",
+                    "nombre": nombre_completo,
                     "email": result['email'],
-                    "nombre_tienda": f"Eroski {result['departamento']}",  # Usar departamento como tienda
-                    "departamento": result['departamento']
+                    "nombre_tienda": nombre_tienda,  # Usar departamento como tienda
+                    "departamento": departamento
                 }
             else:
                 logger.info(f"❌ No se encontró empleado con ID: {employee_id}")
@@ -250,6 +269,7 @@ Mensaje del usuario: {input}
         Returns:
             Command con las actualizaciones de estado
         """
+        print('🌄JGL entra en el nodo')
         self.logger.info("🔍 === INICIANDO IDENTIFICACIÓN POR BASE DE DATOS ===")
         
         # Verificar si la autenticación ya está completada
@@ -270,13 +290,16 @@ Mensaje del usuario: {input}
         
         # Obtener último mensaje del usuario
         user_message = self._get_last_user_message(state)
-        
+        print("🌄JGL user_message:", user_message)
         # Si es el primer mensaje, enviar saludo inicial
         if not user_message or self._is_first_interaction(state):
+            print("🌄JGL es la primera interacción o no hay mensaje del usuario")
             return self._send_initial_greeting(state)
         
         # Procesar mensaje del usuario con el agente React
-        return await self._process_user_message(state, user_message)
+        resultado = await self._process_user_message(state, user_message)
+        # Actualizar estado con 
+        return resultado
     
     def _get_last_user_message(self, state: EroskiState) -> Optional[str]:
         """Obtener el último mensaje del usuario"""
@@ -330,8 +353,9 @@ Puedes escribir algo como:
             # ya que está causando problemas de validación
             
             # Extraer email y número de empleado del mensaje
+            print("🌄JGL antes de extraer datos de identificación")
             extracted_data = await self._extract_identification_data(user_message)
-
+            print("🌄JGL datos extraídos:", extracted_data)
             
             # Verificar qué tipo de búsqueda realizar basado en flags
             email_tried = state.get("email_authen_tried", False)
@@ -355,6 +379,7 @@ Puedes escribir algo como:
                 return self._request_identification_info(state)
                 
         except Exception as e:
+            self.logger.info("🌄JGL 1")
             self.logger.error(f"❌ Error procesando mensaje: {e}")
             return self._handle_error(state, str(e))
     
@@ -402,19 +427,26 @@ Por favor, proporciona:
         self.logger.info(f"🔍 Iniciando extracción híbrida del mensaje: '{message}'")
 
         # PASO 1: REGEX
+        print("🌄JGL antes de extraer con REGEX")
         regex_result = self._extract_with_regex(message)
+        print("🌄JGL REGEX result:", regex_result)
 
         extracted_id = regex_result.get("employee_id")
+        print(f"🌄JGL REGEX result: {extracted_id}")
         if extracted_id and not self.is_valid_employee_id(extracted_id):
+            print(f"🌄JGL ID inválido, aplicando regex\nEmployee ID rechazado por patrón inválido: {extracted_id}")
             self.logger.info(f"⚠️ Employee ID rechazado por patrón inválido: {extracted_id}")
             regex_result["employee_id"] = None
 
+        print(f"🌄Ha pasado")
         # PASO 2: Confianza
         confidence = self._evaluate_regex_confidence(regex_result, message)
+        print(f"🌄JGL 📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
         self.logger.info(f"📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
 
         # PASO 3: Usar o no usar LLM
         if confidence >= 0.7:
+            print("🌄JGL REGEX confiable, usando resultado directo")
             self.logger.info("✅ REGEX confiable, usando resultado directo")
             return {
                 "email": regex_result["email"],
@@ -496,28 +528,34 @@ Por favor, proporciona:
         """Evaluar confianza del resultado REGEX"""
         
         confidence = 0.0
-        
+        print("🌄JGL 1")
         # Email válido encontrado
         if regex_result["email"]:
             confidence += 0.4
+            print("🌄JGL 2")
             
             # Bonus si es email corporativo de Eroski
             if "@eroski.es" in regex_result["email"].lower():
                 confidence += 0.2
+                print("🌄JGL 3")
         
         # Employee ID encontrado
         if regex_result["employee_id"]:
             confidence += 0.3
+            print("🌄JGL 4")
             
             # Bonus por formato típico de código de empleado
             if re.match(r'^[A-Za-z]{1,2}\d{1,3}$', regex_result["employee_id"]):
                 confidence += 0.2
+                print("🌄JGL 5")
+        return confidence
 
     def is_valid_employee_id(self, value: Optional[str]) -> bool:
         """
         Verifica si el valor sigue el patrón típico de un código de empleado.
         Ejemplo: E123, G301, X9, etc.
         """
+        print("🌄JGL is_valid_employee_id:", value)
         if not value:
             return False
         return bool(re.match(r'^[A-Za-z]{1,2}\d{1,3}$', value.strip()))
@@ -574,13 +612,17 @@ Por favor, proporciona:
         """Manejar identificación exitosa"""
         
         self.logger.info(f"✅ Empleado identificado: {result['nombre']}")
-        
-        success_message = f"""✅ **¡Te he identificado correctamente!**
+        empleado_nombre = result.get('nombre') or 'No disponible'
+        empleado_email = result.get('email') or 'No disponible'
+        nombre_tienda = result.get('nombre_tienda') or 'No especificada'
+        departamento = result.get('departamento') or 'No especificado'
 
-👤 **Empleado:** {result['nombre']}
-📧 **Email:** {result['email']}
-🏪 **Tienda:** {result['nombre_tienda']}
-🏢 **Departamento:** {result['departamento']}
+        success_message = f"""✅ **¡Te he identificado correctamente!**
+    
+👤 **Empleado:** {empleado_nombre}
+📧 **Email:** {empleado_email}
+🏪 **Tienda:** {nombre_tienda}
+🏢 **Departamento:** {departamento}
 
 ¡Perfecto! Ahora puedo ayudarte con tu incidencia. ¿Qué problema necesitas reportar? 🔧"""
         
@@ -588,11 +630,11 @@ Por favor, proporciona:
         complete_update = {
             **base_update,
             "authenticated": True,
-            "employee_id": result['numero_empleado'],
-            "employee_name": result['nombre'],
-            "employee_email": result['email'],
-            "store_name": result['nombre_tienda'],
-            "department": result['departamento'],
+            "employee_id": result.get('numero_empleado'),
+            "employee_name": empleado_nombre,
+            "employee_email": empleado_email,
+            "store_name": nombre_tienda,
+            "department": departamento,
             "identification_method": "database",
             "messages": state.get("messages", []) + [AIMessage(content=success_message)]
         }
@@ -611,10 +653,11 @@ Por favor, proporciona:
         if not email_tried or not employee_id_tried:
             # Aún se puede intentar el otro método
             other_method = "email" if not email_tried else "número de empleado"
-            
-            retry_message = f"""❌ No pude encontrarte con ese {search_type}.
+            search_type_safe = search_type or "método de búsqueda"
+            other_method_safe = other_method or "otro método"
+            retry_message = f"""❌ No pude encontrarte con ese {search_type_safe}.
 
-¿Podrías intentar proporcionando tu **{other_method}**?
+¿Podrías intentar proporcionando tu **{other_method_safe}**?
 
 • Si tienes tu email corporativo: **nombre.apellido@eroski.es**
 • Si tienes tu número de empleado: **12345**
@@ -834,23 +877,6 @@ async def identificador_base_de_datos_node(state: EroskiState) -> Command:
     # Ejecutar el nodo
     return await node.execute(state)
 
-
-async def identificador_base_de_datos_node(state: EroskiState) -> Command:
-    """
-    Función wrapper para LangGraph - Nodo Identificador Base de Datos
-    
-    Args:
-        state: Estado actual como EroskiState
-        
-    Returns:
-        Command con las actualizaciones de estado
-    """
-    
-    # Crear instancia del nodo
-    node = IdentificadorBaseDatosNode()
-    
-    # Ejecutar el nodo
-    return await node.execute(state)
 
 # Exports
 __all__ = ["identificador_base_de_datos_node", "IdentificadorBaseDatosNode", "search_by_email_adapted", "search_by_employee_id_adapted"]
