@@ -1,83 +1,16 @@
 {
-  "ER-5510": {
-    "codigo_incidencia": "ER-5510",
-    "timestamp_creacion": "2025-07-04T22:47:10.134864",
+  "ER-3526": {
+    "codigo_incidencia": "ER-3526",
+    "timestamp_creacion": "2025-07-08T09:25:21.295778",
     "estado": "abierta",
     "nombre_empleado": "Javier Guerra",
     "email_empleado": "javier.guerra@devol.es",
     "nombre_tienda": "Eroski Bilbao Centro",
     "seccion": "Carnicería",
-    "tipo_incidencia": "balanza",
-    "problema_especifico": "Error de calibración",
-    "solucion_aplicada": "Limpiar la superficie de pesado y realizar calibración desde el menú de configuración",
-    "estado_solucion": "propuesta",
-    "mensajes": [],
-    "timestamp_actualizacion": "2025-07-04T22:47:20.365878"
-  },
-  "ER-8149": {º º
-    "codigo_incidencia": "ER-8149",
-    "timestamp_creacion": "2025-07-04T22:53:27.026769",
-    "estado": "abierta",
-    "nombre_empleado": "Javier Guerra",
-    "email_empleado": "javier.guerra@devol.es",
-    "nombre_tienda": "Eroski Bilbao Centro",
-    "seccion": "Carnicería",
-    "tipo_incidencia": "balanza",
-    "problema_especifico": "Error de calibración",
-    "solucion_aplicada": "Limpiar la superficie de pesado y realizar calibración desde el menú de configuración",
-    "estado_solucion": "propuesta",
-    "mensajes": [
-      {
-        "tipo": "usuario",
-        "contenido": "hola, tengo un problema con la balanza",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "bot",
-        "contenido": "Hola! Veo que tienes un problema con una balanza. Para ayudarte necesito verificar algunos datos. ¿Podrías decirme tu nombre completo?",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "usuario",
-        "contenido": "Javier Guerra",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "bot",
-        "contenido": "Perfecto, Javier. ¿Cuál es tu email corporativo?",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "usuario",
-        "contenido": "javier.guerra@devol.es, tienda de Eroski en el centro de Bilbao",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "bot",
-        "contenido": "Entiendo que trabajas en Eroski del centro de Bilbao. ¿En qué sección específica trabajas?",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "usuario",
-        "contenido": "esta en la sección de carnicería",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "bot",
-        "contenido": "Perfecto, Javier. Ya tengo todos tus datos:\n- Nombre: Javier Guerra\n- Email: javier.guerra@devol.es\n- Tienda: Eroski Bilbao Centro\n- Sección: Carnicería\n\nAhora vamos a analizar el problema con la balanza. ¿Podrías contarme más detalles sobre qué está ocurriendo?",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "usuario",
-        "contenido": "debe ser un tema de calibración",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      },
-      {
-        "tipo": "bot",
-        "contenido": "✅ **Problema identificado: Balanza**\n\n    📋 **Problema específico:** Error de calibración\n\n    🔧 **Solución paso a paso:**\n    Limpiar la superficie de pesado y realizar calibración desde el menú de configuración\n\n    🤔 **¿Quieres intentar esta solución?**\n    - Responde **'sí'** para que te guíe paso a paso\n    - Responde **'no entiendo'** si necesitas más explicación\n    - Responde **'ya lo intenté'** si ya probaste esto\n\n    📋 *Código de incidencia: ER-8149*",
-        "timestamp": "2025-07-04T22:53:30.379384"
-      }
-    ],
-    "timestamp_actualizacion": "2025-07-04T22:53:30.379384"
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
   }
 }

@@ -20,7 +20,7 @@ CARACTERÍSTICAS:
 - Tools adaptadas a la estructura real de la BD
 """
 
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langchain.agents import create_react_agent, AgentExecutor
@@ -29,9 +29,7 @@ from langgraph.types import Command
 from datetime import datetime
 import logging
 import asyncpg
-import asyncio
 import json
-import os
 import re
 
 from models.eroski_state import EroskiState
@@ -190,6 +188,7 @@ async def search_by_employee_id_adapted(employee_id: str) -> Dict[str, Any]:
         logger.error(f"❌ Error buscando por ID {employee_id}: {e}")
         return {"found": False, "error": f"Error de conexión: {str(e)}"}
 
+next_node_after_authentication = "classify_node"
 
 # =============================================================================
 # NODO PRINCIPAL DE IDENTIFICACIÓN
@@ -275,10 +274,12 @@ Mensaje del usuario: {input}
         # Verificar si la autenticación ya está completada
         if state.get("authenticated", False):
             self.logger.info("✅ Usuario ya autenticado, pasando al siguiente paso")
+            
             return Command(update={
                 "current_node": "identificador_base_datos",
                 "last_activity": datetime.now()
-            })
+            },
+            goto=next_node_after_authentication)
         
         # Verificar flags para evitar búsquedas repetidas
         email_tried = state.get("email_authen_tried", False)
@@ -681,20 +682,7 @@ También puedes contactar con tu supervisor si no tienes estos datos. 📞"""
         
         failure_message = """❌ **No pude identificarte en la base de datos**
 
-Esto puede ocurrir por:
-• Datos no actualizados en el sistema
-• Usuario nuevo sin registro
-• Error temporal en la base de datos
-
-**¿Qué puedes hacer?**
-1. 📞 **Contactar con tu supervisor inmediato**
-2. 🆔 **Verificar tus datos con RRHH**
-3. 📧 **Solicitar actualización de datos**: rrhh@eroski.es
-
-**Para urgencias:**
-📞 Soporte técnico: +34 946 211 000
-
-¡Disculpa las molestias! 🙏"""
+Proporcioname tus datos para que pueda ayudarte con la incidencia."""
         
         complete_update = {
             **base_update,

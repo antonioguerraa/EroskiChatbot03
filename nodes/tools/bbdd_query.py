@@ -147,3 +147,6 @@ async def search_by_employee_id(employee_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"❌ Error buscando por ID {employee_id}: {e}")
         return {"found": False, "error": f"Error de conexión: {str(e)}"}
+
+
+

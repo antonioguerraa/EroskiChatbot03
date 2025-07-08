@@ -225,7 +225,7 @@ async def test_refactored_node():
     print("\n🧪 Probando nodo classify refactorizado...")
     
     try:
-        from nodes.classify_llm_driven import LLMDrivenClassifyNode
+        from nodes.classify_node import LLMDrivenClassifyNode
         from models.eroski_state import EroskiState
         from langchain_core.messages import HumanMessage, AIMessage
         from datetime import datetime

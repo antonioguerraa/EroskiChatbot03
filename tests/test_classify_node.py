@@ -28,16 +28,10 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List
-
 # Agregar el directorio raíz del proyecto al path
 sys.path.insert(0, str(Path(__file__).parent))
-
 from langchain_core.messages import AIMessage, HumanMessage
 from models.eroski_state import EroskiState
-
-
-
 
 # =============================================================================
 # CONFIGURACIÓN DE LOGGING
@@ -46,7 +40,6 @@ from models.eroski_state import EroskiState
 def setup_logging(debug_mode: bool = False):
     """Configurar logging para el test"""
     level = logging.DEBUG if debug_mode else logging.INFO
-    
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,11 +47,9 @@ def setup_logging(debug_mode: bool = False):
             logging.StreamHandler(sys.stdout)
         ]
     )
-    
     # Reducir ruido de otros loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
-
 
 # =============================================================================
 # DATOS DE PRUEBA INICIALES
@@ -89,19 +80,17 @@ def create_initial_state() -> EroskiState:
     # Estado completo
     state = EroskiState(
         # Identificación de sesión
-        session_id="test_classify_session_123",
+        session_id="test_session_123",
+        employee_name="Javier Guerra",
+        employee_email="javier.guerra@devol.es",
+        store_name="Eroski Bilbao Centro",
+        department="Carnicería",
+        authenticated=True,
+        current_node="classify",
         user_id="javier.guerra@devol.es",
         
         # Estado de autenticación (COMPLETADO)
         authenticated=True,
-        auth_data_collected={
-            "name": "Javier Guerra",
-            "email": "javier.guerra@devol.es",
-            "store_name": "Eroski Bilbao Centro",
-            "section": "Carnicería",
-            "store_code": "ERBIL001",
-            "authenticated_at": datetime.now().isoformat()
-        },
         authentication_completed=True,
         
         # Historial de mensajes
@@ -121,22 +110,17 @@ def create_initial_state() -> EroskiState:
     )
     
     return state
-
-
 # =============================================================================
 # CLASE PRINCIPAL DE TESTING
 # =============================================================================
-
 class ClassifyNodeTester:
     """
     Tester interactivo para el nodo classify.
     """
-    
     def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
         self.state = create_initial_state()
         self.node = None
-        
         setup_logging(debug_mode)
         self.logger = logging.getLogger("ClassifyTester")
         
@@ -144,18 +128,14 @@ class ClassifyNodeTester:
         """Inicializar el nodo de clasificación"""
         try:
             # Importar dinámicamente el nodo
-            from nodes.classify_llm_driven import LLMDrivenClassifyNode
+            from nodes.classify_node import LLMDrivenClassifyNode
             self.node = LLMDrivenClassifyNode()
-            
             self.logger.info("✅ Nodo classify inicializado correctamente")
-            
             # Verificar que se carguen los tipos de incidencia
             incident_count = len(self.node.incident_types)
             self.logger.info(f"📋 Tipos de incidencia cargados: {incident_count}")
-            
             if incident_count == 0:
                 self.logger.warning("⚠️ No se cargaron tipos de incidencia. Verificar archivo JSON.")
-            
         except ImportError as e:
             self.logger.error(f"❌ Error importando nodo: {e}")
             self.logger.error("Verifica que el archivo nodes/classify_llm_driven.py exista")
@@ -195,7 +175,6 @@ class ClassifyNodeTester:
         print("\n🚀 El nodo va a analizar automáticamente el historial...")
         print("💡 Observa cómo detecta 'problema con la balanza' del primer mensaje")
         print("🎯 Debería hacer preguntas específicas sobre balanzas, no genéricas")
-        
         # ✅ NUEVO: Mostrar código de incidencia si existe
         incident_code = self.state.get("incident_code")
         if incident_code:
@@ -205,10 +184,8 @@ class ClassifyNodeTester:
     def _print_message_history(self, limit: int = None):
         """Imprimir historial de mensajes"""
         messages = self.state.get("messages", [])
-        
         if limit:
             messages = messages[-limit:]
-        
         for i, msg in enumerate(messages):
             if isinstance(msg, HumanMessage):
                 print(f"  👤 Usuario: {msg.content}")
@@ -218,7 +195,6 @@ class ClassifyNodeTester:
     def _print_classify_state(self):
         """Mostrar estado actual de clasificación"""
         classify_data = self.state.get("classify_data", {})
-        
         print("\n📊 ESTADO DE CLASIFICACIÓN:")
         print("-"*50)
         print(f"  Incidencia identificada: {classify_data.get('incident_identified', False)}")
@@ -380,12 +356,9 @@ class ClassifyNodeTester:
             print(f"\n💥 Error inesperado: {e}")
         
         print("\n👋 ¡Hasta luego!")
-
-
 # =============================================================================
 # FUNCIÓN PRINCIPAL
 # =============================================================================
-
 async def main():
     """Función principal del script"""
     
@@ -399,12 +372,9 @@ async def main():
     # Crear y ejecutar tester
     tester = ClassifyNodeTester(debug_mode=debug_mode)
     await tester.run_interactive_session()
-
-
 # =============================================================================
 # SCRIPT PARA TESTING RÁPIDO (NO INTERACTIVO)
 # =============================================================================
-
 async def quick_test():
     """Test rápido no interactivo para verificar funcionamiento básico"""
     
@@ -438,12 +408,9 @@ async def quick_test():
             break
     
     print("\n✅ Test rápido completado")
-
-
 # =============================================================================
 # PUNTO DE ENTRADA
 # =============================================================================
-
 if __name__ == "__main__":
     
     if '--quick' in sys.argv:

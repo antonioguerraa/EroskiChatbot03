@@ -12,18 +12,22 @@ class ConfirmationTool:
     Tool reutilizable para identificar si un mensaje del usuario es de confirmación.
     Puede ser utilizada por todos los nodos del workflow de LangGraph.
     """
-    
-    def __init__(self, llm_model: str = "gpt-4o-mini"):
+    def __init__(self):
+        self.chain = self._build_chain()
+
+
+    def _build_chain(self):
+
         """
         Inicializa la tool de confirmación.
         
         Args:
             llm_model: Modelo de LLM a utilizar (por defecto gpt-4o-mini para mejor coste-eficiencia)
         """
-        self.llm = get_llm()
+        llm = get_llm()
         
         # Prompt optimizado para identificar confirmaciones
-        self.prompt = ChatPromptTemplate.from_messages([
+        prompt = ChatPromptTemplate.from_messages([
             ("system", """Eres un asistente especializado en interpretar mensajes de confirmación en español.
 
 Tu tarea es analizar el mensaje del usuario y determinar si expresa:
@@ -33,13 +37,17 @@ Tu tarea es analizar el mensaje del usuario y determinar si expresa:
 
 EJEMPLOS DE CONFIRMACIÓN (responde "si"):
 - "Sí", "Vale", "De acuerdo", "Correcto", "Exacto", "Perfecto"
+- "s", "yes", "y"
 - "Está bien", "Confirmo", "Acepto", "Adelante"
 - "Sí, eso es", "Correcto, procede", "Vale, continúa"
+- el usuario puede utilizar frases hechas o slang que impliquen confirmación, como "¡Claro!", "Por supuesto", "Sin duda", etc.             
 
 EJEMPLOS DE NEGACIÓN (responde "no"):
 - "No", "Nada que ver", "Incorrecto", "No es así"
 - "No estoy de acuerdo", "Cancela", "No procede"
 - "Para nada", "Negativo", "No, eso no es"
+- "n", "nope", "no way"
+- el usuario puede utilizar frases hechas o slang que impliquen negación, como "¡Para nada!", "En absoluto", "De ninguna manera", etc.
 
 EJEMPLOS AMBIGUOS (responde "no se"):
 - "Más o menos", "Puede ser", "No estoy seguro"
@@ -47,6 +55,7 @@ EJEMPLOS AMBIGUOS (responde "no se"):
 - Mensajes que no relacionados con confirmación/negación
 - Preguntas del usuario
 - Explicaciones largas sin confirmación clara
+- Mensajes que no tienen sentido de confirmación/negación
 
 INSTRUCCIONES:
 1. Analiza SOLO el sentido de confirmación/negación del mensaje
@@ -57,53 +66,41 @@ INSTRUCCIONES:
             ("human", "Mensaje del usuario: {user_message}")
         ])
         
-        self.chain = self.prompt | self.llm
+        return prompt | llm
 
-    @tool
-    def check_confirmation(self, user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
+
+    def check_raw(self, user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
         """
-        Identifica si el mensaje del usuario es de confirmación.
-        
-        Args:
-            user_message: Mensaje del usuario a analizar
-            context: Contexto adicional opcional (para futuras mejoras)
-            
-        Returns:
-            "si" si es confirmación, "no" si es negación, "no se" si es ambiguo
+        Lógica central de confirmación, usable directamente desde código Python.
         """
         try:
-            # Validar entrada
             if not user_message or not user_message.strip():
                 logger.warning("Mensaje vacío recibido")
                 return "no se"
-            
-            # Limpiar mensaje
+
             clean_message = user_message.strip()
-            
-            # Log para debugging
             logger.info(f"Analizando confirmación: '{clean_message}'")
-            
-            # Invocar LLM
-            response = self.chain.invoke({
-                "user_message": clean_message
-            })
-            
-            # Extraer y limpiar respuesta
+
+            response = self.chain.invoke({"user_message": clean_message})
             result = response.content.strip().lower()
-            
-            # Validar respuesta del LLM
-            valid_responses = ["si", "no", "no se"]
-            if result not in valid_responses:
-                logger.warning(f"Respuesta inesperada del LLM: '{result}'. Usando 'no se'")
-                return "no se"
-            
-            logger.info(f"Resultado de confirmación: '{result}'")
-            return result
-            
+
+            return result if result in ["si", "no", "no se"] else "no se"
+
         except Exception as e:
-            logger.error(f"Error en check_confirmation: {str(e)}")
-            # En caso de error, retornar estado seguro
+            logger.error(f"Error en check_raw: {e}")
             return "no se"
+
+
+    @tool
+    @staticmethod
+    def check_confirmation(user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
+      
+        """
+        Tool compatible con LangChain Agents o LangGraph.
+        Internamente llama a check_raw().
+        """
+        return ConfirmationTool().check_raw(user_message)
+
 
     def get_tool(self):
         """

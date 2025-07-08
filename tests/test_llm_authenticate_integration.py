@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock, AsyncMock
 from langchain_core.messages import HumanMessage, AIMessage
 
 # Importar componentes a testear
-from nodes.authenticate_llm_driven import LLMDrivenAuthenticateNode, ConversationDecision
+from nodes.pte.authenticate_llm_driven import LLMDrivenAuthenticateNode, ConversationDecision
 from workflows.eroski_main_workflow import EroskiFinalWorkflow
 from models.eroski_state import EroskiState
 
@@ -419,7 +419,7 @@ class TestLLMAuthenticateIntegration:
     async def test_robust_json_parsing(self, auth_node):
         """Test: Parser JSON robusto con diferentes formatos"""
         
-        from nodes.authenticate_llm_driven import RobustJsonParser
+        from nodes.pte.authenticate_llm_driven import RobustJsonParser
         
         # Test JSON directo
         json_direct = '{"test": "value"}'

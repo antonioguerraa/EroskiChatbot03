@@ -2,8 +2,12 @@
 # utils/llm/providers.py - Proveedores de LLM CORREGIDO
 # =====================================================
 from langchain_openai import AzureChatOpenAI
-from typing import Optional
+from typing import Optional, List
 import logging
+from openai import AzureOpenAI
+from typing import Optional
+import os
+
 
 from config.settings import get_settings
 
@@ -46,6 +50,39 @@ def get_llm() -> AzureChatOpenAI:
         logger.info(f"🌐 Endpoint: {settings.llm.azure_openai_endpoint}")
     
     return _llm_instance
+
+
+_vectorizer_client: Optional[AzureOpenAI] = None
+
+class EmbeddingVectorizer:
+    """Wrapper reutilizable para generar embeddings usando Azure OpenAI"""
+    
+    def __init__(self):
+        settings = get_settings()
+
+        self.client = AzureOpenAI(
+            api_key=settings.llm.azure_openai_api_key,
+            azure_endpoint=settings.llm.azure_openai_endpoint,
+            api_version=settings.llm.azure_api_version
+        )
+        self.deployment = os.getenv("LLM_AZURE_EMBEDDING_DEPLOYMENT")
+        if not self.deployment:
+            raise ValueError("LLM_AZURE_EMBEDDING_DEPLOYMENT no definido")
+
+    def embed(self, text: str) -> List[float]:
+        """Genera embedding del texto usando el deployment configurado"""
+        response = self.client.embeddings.create(
+            model=self.deployment,
+            input=text,
+            encoding_format="float"
+        )
+        return response.data[0].embedding
+
+def get_vectorizer() -> EmbeddingVectorizer:
+    global _vectorizer_client
+    if _vectorizer_client is None:
+        _vectorizer_client = EmbeddingVectorizer()
+    return _vectorizer_client
 
 def reset_llm():
     """Resetear instancia de LLM (útil para tests)"""

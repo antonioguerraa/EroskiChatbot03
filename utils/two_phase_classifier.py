@@ -13,6 +13,7 @@ from models.eroski_state import EroskiState
 from utils.llm.providers import get_llm
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from utils.state_utils import ensure_incident_description
 
 # =============================================================================
 # MODELOS PARA LAS DOS FASES
@@ -242,13 +243,15 @@ class TwoPhaseClassifier:
     async def _execute_phase_1(self, state: EroskiState) -> IncidentTypeDecision:
         """Ejecutar FASE 1: Identificación del tipo"""
         
-        auth_data = state.get("auth_data_collected", {})
+        name = state.get("employee_name", "No especificado")
+        store_name = state.get("store_name", "No especificado")
+        section = state.get("department", "No especificado")
         
-        # Preparar datos para el prompt
+                # Preparar datos para el prompt
         prompt_data = {
-            "employee_name": auth_data.get("name", "No especificado"),
-            "section": auth_data.get("section", "No especificado"),
-            "store_name": auth_data.get("store_name", "No especificado"),
+            "employee_name": name,
+            "section": section,
+            "store_name": store_name,
             "equipment_types": self._get_equipment_types_list(),
             "conversation_history": self._format_conversation_history(state),
             "user_message": self._get_last_user_message(state)
@@ -312,17 +315,7 @@ class TwoPhaseClassifier:
                 graph=self._create_error_response_with_escalation(state, str(e))
             )
 
-    
-    
-        # Actualizar campos del estado
-        updated_state.update({
-            "incident_type": phase1_result.incident_type,
-            "additional_info": phase1_result.additional_info,
-            "confidence_score": phase1_result.confidence_level,
-            "last_activity": datetime.now()
-        })
-        
-        return EroskiState(updated_state)
+
     
 # Añadir este método a la clase TwoPhaseClassifier en utils/two_phase_classifier.py
 
@@ -568,13 +561,7 @@ class TwoPhaseClassifier:
         
         # Actualizar estado con resultado de FASE 2
         updated_state = dict(state)
-        updated_state.update({
-            "incident_description": phase2_result.problem_description,
-            "solution_found": phase2_result.solution_available,
-            "solution_content": phase2_result.proposed_solution,
-            "last_activity": datetime.now()
-        })
-        
+
         # Combinar información adicional de ambas fases
         existing_additional_info = updated_state.get("additional_info", "")
         new_additional_info = phase2_result.additional_info or ""
@@ -583,6 +570,18 @@ class TwoPhaseClassifier:
             combined_info = f"{existing_additional_info} | {new_additional_info}"
         else:
             combined_info = new_additional_info or existing_additional_info
+        
+        updated_state.update({
+            "incident_description": phase2_result.problem_description,
+            "solution_found": phase2_result.solution_available,
+            "solution_content": phase2_result.proposed_solution,
+            "last_activity": datetime.now()
+        })
+        
+
+        updated_state = ensure_incident_description(updated_state)
+
+        
         
         updated_state["additional_info"] = combined_info
         
@@ -661,6 +660,9 @@ class TwoPhaseClassifier:
                                 "contenido": msg.content,
                                 "timestamp": datetime.now().isoformat()
                             })
+                    
+                    # Asegurar que incident_description exista
+                    state = ensure_incident_description(state)
                     
                     incidents_data[incident_code]["mensajes"] = serialized_messages
                     
@@ -800,7 +802,6 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
             from config.incident_config import IncidentConfigLoader
             config_loader = IncidentConfigLoader()
             incident_types = config_loader.get_incident_types()
-            logging.info(f"🌄JGL incident_types 2: {incident_types}")
             if incident_type in incident_types:
                 incident_data = incident_types[incident_type]
                 

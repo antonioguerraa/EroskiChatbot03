@@ -89,7 +89,7 @@ class EroskiFinalWorkflow(BaseWorkflow):
             from nodes.search_solution import search_solution_node
             from nodes.search_knowledge import search_knowledge_node
             from nodes.escalate import escalate_supervisor_node
-            from nodes.verify import verify_resolution_node
+            from nodes.pte.verify import verify_resolution_node
             from nodes.finalize import finalize_conversation_node
             
             graph.add_node("authenticate", authenticate_employee_node)

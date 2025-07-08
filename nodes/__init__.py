@@ -8,7 +8,7 @@ from .base_node import BaseNode
 try:
     # CORRECCIÓN: Era authenticate_llm__driven (doble guión bajo)
     # AHORA: authenticate_llm_driven (guión bajo simple)
-    from .authenticate_llm_driven import llm_driven_authenticate_node
+    from .pte.authenticate_llm_driven import llm_driven_authenticate_node
     AUTHENTICATE_AVAILABLE = True
     print("✅ authenticate disponible")
 except ImportError as e:
@@ -49,7 +49,7 @@ except ImportError:
     ESCALATE_AVAILABLE = False
 
 try:
-    from .verify import verify_resolution_node
+    from .pte.verify import verify_resolution_node
     VERIFY_AVAILABLE = True
 except ImportError:
     VERIFY_AVAILABLE = False
@@ -59,6 +59,10 @@ try:
     FINALIZE_AVAILABLE = True
 except ImportError:
     FINALIZE_AVAILABLE = False
+
+
+
+
 
 # ========== EXPORTS DINÁMICOS ==========
 __all__ = ["BaseNode"]

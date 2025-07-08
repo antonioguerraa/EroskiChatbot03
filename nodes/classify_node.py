@@ -17,13 +17,12 @@ HELPERS UTILIZADOS:
 - IncidentPersistence: Persistencia en archivo JSON
 """
 
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from datetime import datetime
 import logging
 import json
-import re
 from pathlib import Path
 
 from models.eroski_state import EroskiState
@@ -145,7 +144,6 @@ class LLMDrivenClassifyNode(BaseNode):
         # ✅ NUEVO: Archivo de incidencias
         self.incidents_file = Path("incidents_database.json")
 
-        
     def _initialize_helpers(self):
         """
         ✅ NUEVO MÉTODO: Inicializar todos los helpers usando la factory
