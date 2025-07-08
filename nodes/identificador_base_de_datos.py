@@ -268,9 +268,9 @@ Mensaje del usuario: {input}
         Returns:
             Command con las actualizaciones de estado
         """
-        print('🌄JGL entra en el nodo')
+        print(f'🌄JGL entra en {self.__class__.__name__}')
+
         self.logger.info("🔍 === INICIANDO IDENTIFICACIÓN POR BASE DE DATOS ===")
-        
         # Verificar si la autenticación ya está completada
         if state.get("authenticated", False):
             self.logger.info("✅ Usuario ya autenticado, pasando al siguiente paso")
@@ -278,8 +278,7 @@ Mensaje del usuario: {input}
             return Command(update={
                 "current_node": "identificador_base_datos",
                 "last_activity": datetime.now()
-            },
-            goto=next_node_after_authentication)
+            })
         
         # Verificar flags para evitar búsquedas repetidas
         email_tried = state.get("email_authen_tried", False)
