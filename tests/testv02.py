@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.eroski_state import EroskiState, create_initial_eroski_state
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_orquestador import identificador_orquestador_node
-from nodes.identificador_manual import recoger_datos_empleado_node
+from nodes.identificador_manual import identificacion_manual
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage
 # =====================================================
@@ -98,28 +98,27 @@ class IdentificadorTester:
         # Envolver nodos async con RunnableLambda
         builder.add_node("orquestador", identificador_orquestador_node)
         builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
-        builder.add_node("recoger_datos", recoger_datos_empleado_node)
+        builder.add_node("identificacion_manual", identificacion_manual)
 
         # Ruta condicional
         def route(state: EroskiState):
             #for key, vaule in state.items():
             #    print(f"🌄JGL estado {key}: {vaule}")
-            print("🙋‍♀️"*100)
             if state.get("authenticated"):
                 return END
-            if state.get("awaiting_user_input") and state.get("current_node") == "recoger_datos":
+            if state.get("awaiting_user_input") and state.get("current_node") == "identificacion_manual":
                 return END
             if state.get("email_authen_tried", False) and state.get("employee_id_authent_tried", False):
-                return "recoger_datos"
-            return "recoger_datos"
+                return "identificacion_manual"
+            return "identificador_base_de_datos"
 
         builder.set_entry_point("orquestador")
         builder.add_conditional_edges("orquestador", route, {
             "identificador_base_de_datos": "identificador_base_de_datos",
-            "recoger_datos": "recoger_datos",
+            "identificacion_manual": "identificacion_manual",
             END: END
         })
-        builder.add_edge("recoger_datos", END)
+        builder.add_edge("identificacion_manual", END)
 
 
         return builder.compile()

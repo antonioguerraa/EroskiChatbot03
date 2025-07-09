@@ -20,9 +20,13 @@ async def run_interactive_test():
     builder = StateGraph(EroskiState)
 
     # Envolver nodos async con RunnableLambda
-    builder.add_node("orquestador", RunnableLambda(identificador_orquestador_node))
-    builder.add_node("identificador_base_de_datos", RunnableLambda(identificador_base_de_datos_node))
-    builder.add_node("identificacion_manual", RunnableLambda(identificacion_manual_node))
+    builder.add_node("orquestador", identificador_orquestador_node)
+    builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
+    builder.add_node("identificacion_manual", identificacion_manual_node)
+
+    print(f"🌄JGL state.get('authenticated'): {EroskiState.get('authenticated')}")
+    print(f"🌄JGL state.get('email_authen_tried'): {EroskiState.get('email_authen_tried')}")
+    print(f"🌄JGL state.get('employee_id_authent_tried'): {EroskiState.get('employee_id_authent_tried')}")
 
     # Ruta condicional
     def route(state: EroskiState):

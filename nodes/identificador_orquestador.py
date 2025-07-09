@@ -10,7 +10,8 @@ from langgraph.types import Command
 from datetime import datetime
 from models.eroski_state import EroskiState
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
-from nodes.identificacion_manual import identificacion_manual_node
+#from nodes.identificacion_manual import identificacion_manual_node
+from nodes.identificador_manual import recoger_datos_empleado_node
 from langchain_core.messages import AIMessage
 
 
@@ -32,7 +33,7 @@ class IdentificadorOrquestadorNode:
             })
 
         if self._debe_usar_identificacion_manual(state):
-            return await identificacion_manual_node(state)
+            return await recoger_datos_empleado_node(state)
         else:
             return await identificador_base_de_datos_node(state)
 

@@ -206,7 +206,7 @@ class IdentificadorBaseDatosNode(BaseNode):
     def __init__(self):
         super().__init__("IdentificadorBaseDatos")
         self.llm = get_llm()
-        self.max_attempts = 3
+        self.max_attempts = 10
         
         # Crear agente React con las tools adaptadas
         self.tools = [search_by_email_adapted, search_by_employee_id_adapted]
@@ -229,28 +229,44 @@ HERRAMIENTAS DISPONIBLES:
 
 NOMBRES DE HERRAMIENTAS: {tool_names}
 
-MISIÓN:
+🎯 MISIÓN:
 Identificar al usuario utilizando su email o número de empleado a partir de su mensaje.
 
-INSTRUCCIONES:
-1. Analiza el mensaje del usuario para extraer email o número de empleado
-2. Si encuentras un email, usa la herramienta search_by_email_adapted
-3. Si encuentras un número de empleado, usa la herramienta search_by_employee_id_adapted
-4. Si encuentras ambos, prioriza el email
-5. Si no encuentras ninguno, pide amablemente que proporcione la información
+📋 INSTRUCCIONES:
+1. Si encuentras un email, usa `search_by_email_adapted`
+2. Si encuentras un número de empleado, usa `search_by_employee_id_adapted`
+3. Si encuentras ambos, prioriza el email
+4. Si no encuentras ninguno, pide que el usuario proporcione sus datos
 
-FORMATO DE RESPUESTA:
-- Si encuentras al usuario: "✅ Te he identificado correctamente, [Nombre]!"
-- Si no lo encuentras: "❌ No pude encontrarte en la base de datos"
-- Si falta información: "📋 Necesito tu email o número de empleado para identificarte"
+⚠️ IMPORTANTE:
+Usa SIEMPRE este formato para ejecutar una herramienta:
 
-Mensaje del usuario: {input}
+Thought: Necesito buscar al usuario por email
+Action: search_by_email_adapted
+Action Input: {{"email": "nombre@eroski.es"}}
+
+Otro ejemplo:
+
+Thought: El usuario ha dado su número de empleado
+Action: search_by_employee_id_adapted
+Action Input: {{"employee_id": "G123"}}
+
+❌ NO digas "usaré la herramienta..." en lenguaje natural.
+✅ Usa el formato exacto con Action y Action Input.
+
+MENSAJE DEL USUARIO:
+{input}
 
 {agent_scratchpad}
+
 """)
         
         agent = create_react_agent(self.llm, self.tools, prompt)
-        return AgentExecutor(agent=agent, tools=self.tools, verbose=True, max_iterations=3)
+        return AgentExecutor(agent=agent, 
+                             tools=self.tools, 
+                             verbose=True, 
+                             max_iterations=3,
+                             handle_parsing_errors=True)
     
     def get_required_fields(self) -> List[str]:
         return ["messages"]
@@ -268,7 +284,7 @@ Mensaje del usuario: {input}
         Returns:
             Command con las actualizaciones de estado
         """
-        print(f'🌄JGL entra en {self.__class__.__name__}')
+        self.logger.info(f'🌄JGL entra en {self.__class__.__name__}')
 
         self.logger.info("🔍 === INICIANDO IDENTIFICACIÓN POR BASE DE DATOS ===")
         # Verificar si la autenticación ya está completada
@@ -290,11 +306,11 @@ Mensaje del usuario: {input}
         
         # Obtener último mensaje del usuario
         user_message = self._get_last_user_message(state)
-        print("🌄JGL user_message:", user_message)
+        self.logger.info(f"🌄JGL user_message:{user_message}" )
         # Si es el primer mensaje, enviar saludo inicial
-        if not user_message or self._is_first_interaction(state):
-            print("🌄JGL es la primera interacción o no hay mensaje del usuario")
-            return self._send_initial_greeting(state)
+        #if not user_message or self._is_first_interaction(state):
+        #    self.logger.info("🌄JGL es la primera interacción o no hay mensaje del usuario")
+        #    return self._send_initial_greeting(state)
         
         # Procesar mensaje del usuario con el agente React
         resultado = await self._process_user_message(state, user_message)
@@ -353,26 +369,44 @@ Puedes escribir algo como:
             # ya que está causando problemas de validación
             
             # Extraer email y número de empleado del mensaje
-            print("🌄JGL antes de extraer datos de identificación")
+            self.logger.info("🌄JGL antes de extraer datos de identificación")
             extracted_data = await self._extract_identification_data(user_message)
-            print("🌄JGL datos extraídos:", extracted_data)
+            self.logger.info("🌄JGL datos extraídos 358:", extracted_data)
             
             # Verificar qué tipo de búsqueda realizar basado en flags
             email_tried = state.get("email_authen_tried", False)
             employee_id_tried = state.get("employee_id_authent_tried", False)
             
             # Determinar método de búsqueda
+            self.logger.info("🌄JGL punto 1", extracted_data)
             if extracted_data["email"] and not email_tried:
+                self.logger.info("🌄JGL punto 2", extracted_data)
                 self.logger.info(f"🔄 Intentando búsqueda por email: {extracted_data['email']}")
                 return await self._search_by_email(state, extracted_data["email"])
             elif extracted_data["employee_id"] and not employee_id_tried:
+                self.logger.info("🌄JGL punto 3", extracted_data)
                 self.logger.info(f"🔄 Intentando búsqueda por ID: {extracted_data['employee_id']}")
                 return await self._search_by_employee_id(state, extracted_data["employee_id"])
             elif extracted_data["email"] or extracted_data["employee_id"]:
+                self.logger.info("🌄JGL punto 4", extracted_data)
                 # Ya se intentó este método, usar el agente para responder
                 self.logger.info("🔄 Método ya intentado, usando agente React")
                 response = await self.agent.ainvoke({"input": user_message})
-                return self._handle_agent_response(state, response["output"])
+                output = None
+                self.logger.info("🌄JGL punto 5:\n", response)
+                if isinstance(response, dict) and "output" in response:
+                    output = response["output"]
+                elif hasattr(response, "return_values") and "output" in response.return_values:
+                    output = response.return_values["output"]
+                else:
+                    self.logger.warning("⚠️ No se pudo extraer 'output' del agente. Respuesta cruda: %s", response)
+                    output = "⚠️ No entendí tu mensaje. ¿Podrías repetirlo con más claridad?"
+
+                return self._handle_agent_response(state, output)
+               
+                
+                
+                
             else:
                 # No se encontró información de identificación
                 self.logger.info("❌ No se encontró email ni ID en el mensaje")
@@ -427,26 +461,26 @@ Por favor, proporciona:
         self.logger.info(f"🔍 Iniciando extracción híbrida del mensaje: '{message}'")
 
         # PASO 1: REGEX
-        print("🌄JGL antes de extraer con REGEX")
+        self.logger.info("🌄JGL antes de extraer con REGEX")
         regex_result = self._extract_with_regex(message)
-        print("🌄JGL REGEX result:", regex_result)
+        self.logger.info("🌄JGL REGEX result:", regex_result)
 
         extracted_id = regex_result.get("employee_id")
-        print(f"🌄JGL REGEX result: {extracted_id}")
+        self.logger.info(f"🌄JGL REGEX result: {extracted_id}")
         if extracted_id and not self.is_valid_employee_id(extracted_id):
-            print(f"🌄JGL ID inválido, aplicando regex\nEmployee ID rechazado por patrón inválido: {extracted_id}")
+            self.logger.info(f"🌄JGL ID inválido, aplicando regex\nEmployee ID rechazado por patrón inválido: {extracted_id}")
             self.logger.info(f"⚠️ Employee ID rechazado por patrón inválido: {extracted_id}")
             regex_result["employee_id"] = None
 
-        print(f"🌄Ha pasado")
+        self.logger.info("🌄Ha pasado")
         # PASO 2: Confianza
         confidence = self._evaluate_regex_confidence(regex_result, message)
-        print(f"🌄JGL 📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
+        self.logger.info(f"🌄JGL 📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
         self.logger.info(f"📊 REGEX: email='{regex_result['email']}', id='{regex_result['employee_id']}', confianza={confidence:.2f}")
 
         # PASO 3: Usar o no usar LLM
         if confidence >= 0.7:
-            print("🌄JGL REGEX confiable, usando resultado directo")
+            self.logger.info("🌄JGL REGEX confiable, usando resultado directo")
             self.logger.info("✅ REGEX confiable, usando resultado directo")
             return {
                 "email": regex_result["email"],
@@ -550,7 +584,7 @@ Por favor, proporciona:
         Verifica si el valor sigue el patrón típico de un código de empleado.
         Ejemplo: E123, G301, X9, etc.
         """
-        print("🌄JGL is_valid_employee_id:", value)
+        self.logger.info("🌄JGL is_valid_employee_id:", value)
         if not value:
             return False
         return bool(re.match(r'^[A-Za-z]{1,2}\d{1,3}$', value.strip()))
@@ -699,7 +733,7 @@ Proporcioname tus datos para que pueda ayudarte con la incidencia."""
         
         request_message = """📋 **Necesito información para identificarte**
 
-No he podido encontrar tu email o número de empleado en tu mensaje.
+Para poder ayudarte necesito que me proporciones tu email o número de empleado en tu mensaje.
 
 Por favor, proporciona:
 📧 **Tu email corporativo** (ejemplo: nombre.apellido@eroski.es)
@@ -708,7 +742,7 @@ Por favor, proporciona:
 
 Ejemplos:
 • "Mi email es maria.garcia@eroski.es"
-• "Soy el empleado 67890"
+• "Soy el empleado T999"
 
 ¿Podrías ayudarme con esta información? 😊"""
         

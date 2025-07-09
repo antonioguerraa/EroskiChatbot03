@@ -81,6 +81,7 @@ class EroskiState(TypedDict, total=False):
     session_id: str                        # ID único de la sesión
     employee_id: Optional[str]              # Número de empleado
     employee_name: Optional[str]            # Nombre completo
+    employee_lastname: Optional[str]            # Nombre completo
     employee_email: Optional[str]           # Email corporativo
     store_id: Optional[str]                 # Código de tienda
     store_name: Optional[str]               # Nombre de la tienda
@@ -119,6 +120,7 @@ class EroskiState(TypedDict, total=False):
     solution_content: Optional[str]        # Contenido de la solución
     resolution_steps: Optional[List[str]]  # Pasos para resolver
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
+
     
     # ========== ESCALACIÓN ==========
     escalation_needed: bool                # Si requiere escalación
@@ -140,6 +142,8 @@ class EroskiState(TypedDict, total=False):
     can_retry: bool                        # Si puede reintentar
     flow_completed: bool                   # Si el flujo terminó
     awaiting_user_input: bool              # Si está esperando input del usuario
+    pending_confirmation: bool            # Si está pendiente de confirmación
+    modificaciones_pendientes: Optional[Dict[str, str]]
     
     # ========== RESULTADO Y MÉTRICAS ==========
     resolved: bool                         # Si se resolvió el problema
@@ -185,6 +189,8 @@ def create_initial_eroski_state(
         # Identificación
         session_id=session_id,
         authenticated=False,
+        email_authen_tried = True,
+        employee_id_authent_tried = True,
         
         # Conversación
         messages=[],

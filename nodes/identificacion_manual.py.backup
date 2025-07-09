@@ -37,6 +37,8 @@ from utils.llm.providers import get_llm
 from utils.get_last_ai_message import get_last_ai_message
 from config.settings import get_settings
 from utils.llm.providers import get_vectorizer
+from langgraph.graph import END
+
 
 # Importar tool de confirmación
 try:
@@ -62,7 +64,6 @@ class IdentificacionManualNode(BaseNode):
     def __init__(self):
         super().__init__("IdentificacionManual")
         self.llm = get_llm()
-        print(f"🌄JGL: CONFIRMATION_AVAILABLE: {CONFIRMATION_AVAILABLE}")
         # Inicializar tool de confirmación si está disponible
         self.confirmation_tool = ConfirmationTool() if CONFIRMATION_AVAILABLE else None
         # Inicializar instancia de confirmación si está disponible
@@ -137,15 +138,14 @@ REGLAS IMPORTANTES:
             Command con estado actualizado
         """
         try:
+            print("🤖"*100)
             self.logger.info("🔍 Iniciando identificación manual")
             self.logger.info("🌄JGL🔍 Iniciando identificación manual")
-            
             # 1. Extraer último mensaje del usuario
             messages = state.get("messages", [])
             self.logger.info(f"🌄JGL messages: {messages}")
             if not messages:
                 return await self._iniciar_conversacion(state)
-            
             ultimo_mensaje = messages[-1]
             self.logger.info(f"🌄JGL ultimo_mensaje: {messages[-1]}")
             if isinstance(ultimo_mensaje, HumanMessage):
@@ -157,9 +157,6 @@ REGLAS IMPORTANTES:
             # DEBUG: Mostrar flags del estado
             self.logger.info(f"🔍 Estado actual - pending_store_confirmation: {state.get('pending_store_confirmation')}")
             self.logger.info(f"🔍 Estado actual - pending_section_confirmation: {state.get('pending_section_confirmation')}")
-            
-            self.logger.info(f"🌄JGL state.get('pending_store_confirmation'): {state.get('pending_store_confirmation')}")
-            self.logger.info(f"🌄JGL state.get('pending_section_confirmation'): {state.get('pending_section_confirmation')}")
             
             # 1. Verificar si es una pregunta de confirmación
             # 2. Verificar si hay confirmación de tienda pendiente
@@ -188,7 +185,6 @@ REGLAS IMPORTANTES:
 
             # 6. Extraer datos del mensaje del usuario
             datos_extraidos = await self._extraer_datos_usuario(state, user_input)
-
 
 
 
@@ -246,7 +242,7 @@ REGLAS IMPORTANTES:
     async def _iniciar_conversacion(self, state: EroskiState) -> Command:
         """Iniciar la conversación de identificación"""
         mensaje = (
-            "¡Hola! 👋 Voy a ayudarte a reportar tu incidencia.\n\n"
+            "Voy a ayudarte a reportar tu incidencia.\n\n"
             "Primero necesito algunos datos para identificarte:\n\n"
             "🔹 **Tu nombre completo**\n"
             "🔹 **Tu número de empleado** \n"
@@ -254,7 +250,6 @@ REGLAS IMPORTANTES:
             "🔹 **La sección/departamento**\n\n"
             "Puedes darme todos los datos de una vez o uno por uno. ¿Cómo prefieres empezar?"
         )
-        
         return Command(
             update={
                 "messages": [AIMessage(content=mensaje)],
@@ -519,7 +514,7 @@ Mensaje del usuario: {user_input}""")
             try:
                 # Buscar tabla de departamentos
                 departamentos_result = await conn.fetch("""
-                    SELECT departamento 
+                    SELECT nombre 
                     FROM departamento 
                     ORDER BY departamento
                 """)
@@ -734,9 +729,9 @@ Respuesta:"""
         
 
 
-    def _actualizar_estado_con_datos(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> EroskiState:
+    def _actualizar_estado_con_datos(self, state_actualizado: EroskiState, datos_extraidos: Dict[str, Any]) -> EroskiState:
         """Actualizar estado con datos extraídos"""
-        state_copia = state.copy()
+        state_copia = state_actualizado.copy()
         
         # Mapear campos extraídos al estado
         if "nombre" in datos_extraidos:
@@ -759,22 +754,22 @@ Respuesta:"""
         
         return state_copia
 
-    def _necesita_confirmacion_departamento(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
+    def _necesita_confirmacion_departamento(self, state_actualizado: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
         """Verificar si necesita confirmación de departamento"""
         
         self.logger.info(f"🌄JGL _necesita_confirmacion_departamento")
-        self.logger.info(f"🌄JGL incident_department: {state.get('incident_department')}")
-        self.logger.info(f"🌄JGL pending_section_confirmation: {state.get('pending_section_confirmation')}")
+        self.logger.info(f"🌄JGL incident_department: {state_actualizado.get('incident_department')}")
+        self.logger.info(f"🌄JGL pending_section_confirmation: {state_actualizado.get('pending_section_confirmation')}")
         self.logger.info(f"🌄JGL _departamentos_cache: {self._departamentos_cache}")
         
         return (
             "seccion" in datos_extraidos and 
-            not state.get("incident_department") and
+            not state_actualizado.get("incident_department") and
             #not state.get("pending_section_confirmation") and  # Evitar bucles
             self._departamentos_cache is not None
         )
 
-    async def _solicitar_confirmacion_departamento(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
+    async def _solicitar_confirmacion_departamento(self, state_actualizado: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
         """Solicitar confirmación de departamento encontrado"""
         nombre_dpto = datos_extraidos["seccion"]
         departamento_parecido = await self._buscar_departamento_mas_parecido(nombre_dpto)
@@ -782,9 +777,8 @@ Respuesta:"""
         self.logger.info(f"\n\n\n🌄🌄🌄JGL departamento_parecido: {departamento_parecido}🌄🌄🌄\n\n\n")
        
         # IMPORTANTE: Actualizar estado con los datos extraídos ANTES de solicitar confirmación
-        state_con_datos = self._actualizar_estado_con_datos(state, datos_extraidos)
+        state_con_datos = self._actualizar_estado_con_datos(state_actualizado, datos_extraidos)
         
-        print(f"\n\n🌄JGL departamentos cache:{self._departamentos_cache}\n\n")
 
 
         
@@ -827,6 +821,7 @@ Respuesta:"""
             mensaje += "\n¿Podrías especificar el nombre exacto del departamento?"
             
             updates = {
+                **state_con_datos,
                 "messages": [AIMessage(content=mensaje)],
                 "pending_department_selection": True,
                 # Preservar todos los datos ya extraídos
@@ -945,11 +940,11 @@ Respuesta:"""
 
 
 
-    def _necesita_confirmacion_tienda(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
+    def _necesita_confirmacion_tienda(self, state_actualizado: EroskiState, datos_extraidos: Dict[str, Any]) -> bool:
         """Verificar si necesita confirmación de tienda"""
         return (
             "tienda" in datos_extraidos and 
-            not state.get("store_id") and
+            not state_actualizado.get("store_id") and
             self._tiendas_cache is not None
         )
 
@@ -963,7 +958,7 @@ Respuesta:"""
                 return codigo
         return None
 
-    async def _solicitar_confirmacion_tienda(self, state: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
+    async def _solicitar_confirmacion_tienda(self, state_actualizado: EroskiState, datos_extraidos: Dict[str, Any]) -> Command:
         """Solicitar confirmación de tienda encontrada usando confirmation_tool"""
         tienda_usuario = datos_extraidos["tienda"]
         tienda_parecida = await self._buscar_tienda_mas_parecida(tienda_usuario)
@@ -972,10 +967,8 @@ Respuesta:"""
             "codigo": self._encontrar_codigo_tienda(tienda_parecida['nombre'])
         }
         # IMPORTANTE: Actualizar estado con los datos extraídos ANTES de solicitar confirmación
-        state_con_datos = self._actualizar_estado_con_datos(state, datos_extraidos)
+        state_con_datos = self._actualizar_estado_con_datos(state_actualizado, datos_extraidos)
         
-        print(f"\n\n🌄JGL tiendas cacher:{self._tiendas_cache}\n\n")
-
         if tienda_encontrada:
             mensaje = (
                 f"He encontrado esta tienda que coincide con '{tienda_usuario}':\n\n"
@@ -984,6 +977,7 @@ Respuesta:"""
             )
             
             updates = {
+                **state_con_datos,
                 "messages": [AIMessage(content=mensaje)],
                 "pending_store_confirmation": {
                     "user_input": tienda_usuario,
@@ -1017,7 +1011,7 @@ Respuesta:"""
         
         return Command(update=updates)
 
-    def _datos_completos(self, state: EroskiState) -> bool:
+    def _datos_completos(self, state_actualizado: EroskiState) -> bool:
         """Verificar si todos los datos están completos"""
         campos_requeridos = [
             "employee_name", "employee_id", 
@@ -1026,13 +1020,13 @@ Respuesta:"""
         ]
         
         return all(
-            state.get(campo) and str(state.get(campo)).strip() 
+            state_actualizado.get(campo) and str(state_actualizado.get(campo)).strip() 
             for campo in campos_requeridos
         )
 
-    async def _finalizar_identificacion(self, state: EroskiState) -> Command:
+    async def _finalizar_identificacion(self, state_actualizado: EroskiState) -> Command:
         """Finalizar proceso de identificación"""
-        resumen = self._mostrar_resumen_estado(state)
+        resumen = self._mostrar_resumen_estado(state_actualizado)
         
         mensaje = (
             f"¡Perfecto! ✅ He recogido toda tu información:\n\n"
@@ -1043,6 +1037,7 @@ Respuesta:"""
         
         return Command(
             update={
+                **state_actualizado,
                 "messages": [AIMessage(content=mensaje)],
                 "identification_complete": True,
                 "manual_identification_completed": True,
@@ -1051,18 +1046,18 @@ Respuesta:"""
             }
         )
 
-    async def _solicitar_datos_faltantes(self, state: EroskiState) -> Command:
+    async def _solicitar_datos_faltantes(self, state_actualizado: EroskiState) -> Command:
         """Solicitar datos que faltan"""
-        resumen = self._mostrar_resumen_estado(state)
+        resumen = self._mostrar_resumen_estado(state_actualizado)
         
         # Determinar qué dato solicitar siguiente
-        if not state.get("employee_name"):
+        if not state_actualizado.get("employee_name"):
             pregunta = "¿Cuál es tu nombre completo?"
-        elif not state.get("employee_id"):
+        elif not state_actualizado.get("employee_id"):
             pregunta = "¿Cuál es tu número de empleado?"
-        elif not state.get("incident_store_name") or not state.get("store_id"):
+        elif not state_actualizado.get("incident_store_name") or not state_actualizado.get("store_id"):
             pregunta = "¿En qué tienda ocurre la incidencia? (ej: Hipermercado Bilbondo, Eroski Durango)"
-        elif not state.get("incident_department"):
+        elif not state_actualizado.get("incident_department"):
             pregunta = "¿En qué sección trabajas? (ej: Carnicería, Panadería, Caja, Pescadería)"
         else:
             pregunta = "¿Hay algún dato que quieras corregir?"
@@ -1070,9 +1065,16 @@ Respuesta:"""
         mensaje = f"{resumen}\n\n{pregunta}"
         
         return Command(
+            goto=END,
             update={
-                "messages": [AIMessage(content=mensaje)]
-            }
+                **state_actualizado,
+                "messages": [AIMessage(content=mensaje)],
+                "awaiting_user_input": True,
+                "current_node": "identificacion_manual",
+                "last_activity": datetime.now(),
+                "identification_started": True,
+            } 
+            
         )
 
     def _mostrar_resumen_estado(self, state: EroskiState) -> str:

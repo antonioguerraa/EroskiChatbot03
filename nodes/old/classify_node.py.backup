@@ -33,7 +33,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from config.incident_config import IncidentConfigLoader
-from utils.routing import ClassificationRouter
+
 
 # ✅ NUEVO: Importar helpers especializados
 from utils.incident_helpers import (
@@ -110,7 +110,7 @@ class LLMDrivenClassifyNode(BaseNode):
         super().__init__("classify")
         self.max_attempts = 8  # Más intentos para conversación detallada
         self.llm = get_llm()
-        self.router = ClassificationRouter(self)
+        
         # Cargar configuración de incidencias
         self.incident_loader = IncidentConfigLoader()
         self.incident_types = self._load_incident_types()
@@ -143,29 +143,6 @@ class LLMDrivenClassifyNode(BaseNode):
         
         # ✅ NUEVO: Archivo de incidencias
         self.incidents_file = Path("incidents_database.json")
-
-    async def execute(self, state: EroskiState) -> Command:
-        """
-        Ejecutar clasificación usando el sistema de dos fases
-        """
-        
-        self.logger.info("🚀 Iniciando clasificación en dos fases")
-        
-        try:
-            # Generar código de incidencia si no existe
-            if not state.get("incident_code"):
-                incident_code = self.code_manager.generate_unique_code()
-                state = {**state, "incident_code": incident_code}
-                self._initialize_incident_with_helpers(state, incident_code)
-            
-            # Ejecutar clasificación en dos fases
-            return await execute_two_phase_classification(state)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error en clasificación dos fases: {e}")
-            return self._handle_error(state, str(e))
-
-
 
     def _initialize_helpers(self):
         """
@@ -1034,6 +1011,26 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
         
         return ""
 
+    async def execute(self, state: EroskiState) -> Command:
+        """
+        Ejecutar clasificación usando el sistema de dos fases
+        """
+        
+        self.logger.info("🚀 Iniciando clasificación en dos fases")
+        
+        try:
+            # Generar código de incidencia si no existe
+            if not state.get("incident_code"):
+                incident_code = self.code_manager.generate_unique_code()
+                state = {**state, "incident_code": incident_code}
+                self._initialize_incident_with_helpers(state, incident_code)
+            
+            # Ejecutar clasificación en dos fases
+            return await execute_two_phase_classification(state)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en clasificación dos fases: {e}")
+            return self._handle_error(state, str(e))
 
     async def _analyze_with_llm(self, state: EroskiState, attempt_number: int) -> ClassificationDecision:
         """Analizar con LLM para tomar decisión (para intentos posteriores al primero)"""
@@ -1159,8 +1156,70 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
             )
     
     async def _process_llm_decision(self, state: EroskiState, decision: ClassificationDecision, attempt_number: int) -> Command:
-        return self.router.route(state, decision, attempt_number)
-
+        """Procesar la decisión del LLM"""
+        
+        # Actualizar datos de clasificación
+        classify_data = state.get("classify_data", {})
+        
+        # ✅ NUEVO: Seguimiento de progreso y confianza
+        confidence_history = classify_data.get("confidence_history", [])
+        confidence_history.append(decision.confidence_level)
+        
+        # Mantener solo las últimas 5 mediciones
+        if len(confidence_history) > 5:
+            confidence_history = confidence_history[-5:]
+        
+        # Actualizar con nueva información
+        if decision.incident_type:
+            classify_data["incident_type"] = decision.incident_type
+        if decision.specific_problem:
+            classify_data["specific_problem"] = decision.specific_problem
+        if decision.proposed_solution:
+            classify_data["proposed_solution"] = decision.proposed_solution
+        
+        classify_data.update({
+            "incident_identified": decision.incident_identified,
+            "problem_identified": decision.problem_identified,
+            "solution_ready": decision.solution_ready,
+            "confidence_level": decision.confidence_level,
+            "confidence_history": confidence_history,  # ✅ NUEVO
+            "keywords_detected": decision.keywords_detected,
+            "urgency_level": decision.urgency_level,
+            "last_analysis": datetime.now().isoformat(),
+            "progress_assessment": decision.progress_assessment,  # ✅ NUEVO
+            "new_information_provided": decision.new_information_provided,  # ✅ NUEVO
+            "stuck_in_loop": decision.stuck_in_loop  # ✅ NUEVO
+        })
+        
+        # Procesar según la acción
+        if decision.next_action == "escalate" or decision.needs_escalation:
+            return self._escalate_to_supervisor(state)
+        
+        elif decision.next_action == "provide_solution" and decision.solution_ready:
+            return self._provide_solution_and_complete(state, decision)
+        
+        elif decision.next_action == "complete" and decision.solution_ready:
+            return self._provide_solution_and_complete(state, decision)
+        
+        # ✅ NUEVO: Si se identifica tipo pero no problema específico, buscar en archivo
+        elif decision.incident_identified and decision.incident_type and not decision.problem_identified:
+            return self._try_auto_classify_from_file(state, decision, attempt_number)
+        
+        # ✅ NUEVO: Si necesita más información, generar preguntas específicas del archivo
+        elif self._should_generate_specific_questions(decision, attempt_number):
+            return self._generate_targeted_questions(state, decision, attempt_number)
+        
+        else:
+            # Continuar conversación
+            return Command(
+                update={
+                    "messages": state["messages"] + [AIMessage(content=decision.message_to_user)],
+                    "classify_data": classify_data,
+                    "classify_attempt_number": attempt_number,
+                    "current_step": "classify"
+                }
+            )
+    
     def _generate_targeted_questions(self, state: EroskiState, decision: ClassificationDecision, attempt_number: int) -> Command:
         """
         ✅ REFACTORIZADO: Generar preguntas dirigidas usando helper.
