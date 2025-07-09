@@ -42,7 +42,7 @@ class ClassificationDecision(BaseModel):
     incident_identified: bool = Field(description="Si se ha identificado el tipo de incidencia")
     problem_identified: bool = Field(description="Si se ha identificado el problema específico")
     solution_ready: bool = Field(description="Si se puede proporcionar una solución")
-    needs_escalation: bool = Field(description="Si debe escalarse a supervisor")
+    escalation_needed: bool = Field(description="Si debe escalarse a supervisor")
     wants_to_cancel: bool = Field(description="Si el usuario quiere cancelar")
     
     # Información identificada
@@ -185,7 +185,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
     "incident_identified": false,
     "problem_identified": false,
     "solution_ready": false,
-    "needs_escalation": false,
+    "escalation_needed": false,
     "wants_to_cancel": false,
     "incident_type": null,
     "specific_problem": null,
@@ -286,7 +286,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
     "incident_identified": false,
     "problem_identified": false,
     "solution_ready": false,
-    "needs_escalation": false,
+    "escalation_needed": false,
     "wants_to_cancel": false,
     "incident_type": null,
     "specific_problem": null,
@@ -693,7 +693,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
             if decision.next_action == "provide_solution" and decision.solution_ready:
                 return self._provide_solution_and_complete(state, decision)
             
-            elif decision.needs_escalation:
+            elif decision.escalation_needed:
                 return self._escalate_to_supervisor(state)
             
             else:
@@ -739,7 +739,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
             return True
         
         # Escalación si el LLM lo indica
-        if classify_data.get("needs_escalation", False):
+        if classify_data.get("escalation_needed", False):
             return True
         
         # Escalación si el usuario lo solicita explícitamente
@@ -869,7 +869,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
     "incident_identified": false,
     "problem_identified": false,
     "solution_ready": false,
-    "needs_escalation": false,
+    "escalation_needed": false,
     "wants_to_cancel": false,
     "incident_type": null,
     "specific_problem": null,
@@ -938,7 +938,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
         })
         
         # Procesar según la acción
-        if decision.next_action == "escalate" or decision.needs_escalation:
+        if decision.next_action == "escalate" or decision.escalation_needed:
             return self._escalate_to_supervisor(state)
         
         elif decision.next_action == "provide_solution" and decision.solution_ready:

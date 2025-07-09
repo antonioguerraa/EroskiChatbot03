@@ -89,6 +89,12 @@ class IncidentType:
         }
         return severity_map.get(self.urgency_level, "Desconocida")
 
+    def get_description(self) -> Dict[str, str]:
+        return self.description or {}
+    def get_common_issues(self) -> List[str]:
+        return self.common_issues or []
+    
+
 class IncidentConfigLoader:
     """
     Cargador y gestor de configuración de tipos de incidencia.
@@ -110,6 +116,7 @@ class IncidentConfigLoader:
         self.config_data: Dict[str, Any] = {}
         self.file_mtimes: Dict[str, float] = {}
         self.last_loaded: Optional[datetime] = None
+        self.incidentes_problemas: Dict[str, Dict[str, Any]] = {}
         
         # Cache para búsquedas
         self._search_cache: Dict[str, List[Dict[str, Any]]] = {}
@@ -192,6 +199,7 @@ class IncidentConfigLoader:
             with open(config_file, 'r', encoding='utf-8') as f:
                 file_data = json.load(f)
             
+
             # Validar estructura
             if not self._validate_config_structure(file_data, config_path):
                 return False
@@ -199,6 +207,8 @@ class IncidentConfigLoader:
             # ✅ EXTRACCIÓN FLEXIBLE: Buscar la sección de incidencias
             incident_types = self._extract_incident_types(file_data, config_path)
             
+            self.incidentes_problemas = self._extract_incident_problems(file_data, config_path)
+
             if not incident_types:
                 logger.warning(f"⚠️ No se pudieron extraer tipos de {config_path}")
                 return False
@@ -335,6 +345,23 @@ class IncidentConfigLoader:
         
         self.incident_types = default_types
     
+    def _extract_incident_problems(self, datajson: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+    
+        try:
+            
+            result = {}
+
+            incident_types = datajson.get("incident_types", {})
+            for tipo, data in incident_types.items():
+                problemas = data.get("problemas", {})
+                if isinstance(problemas, dict):
+                    result[tipo] = problemas
+
+            return result
+        except Exception as e:
+            logger.error(f"❌ Error extrayendo problemas por tipo: {e}")
+            return {}
+
     def _extract_incident_types(self, data: Dict[str, Any], file_path: str) -> Dict[str, Any]:
         """
         Extraer tipos de incidencia de cualquier estructura de archivo
@@ -379,7 +406,7 @@ class IncidentConfigLoader:
             problemas = incident_data["problemas"]
             if isinstance(problemas, dict):
                 common_issues = list(problemas.keys())  # Solo los nombres de los problemas
-                logger.info(f"✅ Convertidos {len(common_issues)} problemas para {incident_id}")
+                #logger.info(f"✅ Convertidos {len(common_issues)} problemas para {incident_id}")
         
         return IncidentType(
             id=incident_id,
@@ -424,9 +451,45 @@ class IncidentConfigLoader:
         except Exception as e:
             logger.error(f"❌ Error verificando cambios: {e}")
             return False
-    
+
     # ========== API DE CONSULTA ==========
-    
+
+    def get_incidentes_problemas(self)-> Dict[str, Dict[str, Any]]:
+        return self.incidentes_problemas
+
+    def get_all_problems_by_type(self) -> Dict[str, Dict[str, str]]:
+        """
+        Devuelve un diccionario con todos los tipos de incidencia y sus problemas.
+
+        Output:
+            {
+                "balanza": {
+                    "La Balanza no imprime las Etiquetas": "...",
+                    ...
+                },
+                "tpv": {
+                    "El TPV no enciende": "...",
+                    ...
+                },
+                ...
+            }
+        """
+        try:
+            raw = self.config_data
+            result = {}
+
+            incident_types = raw.get("incident_types", {})
+            for tipo, data in incident_types.items():
+                print("🏅"*100)
+                problemas = data.get("problemas", {})
+                if isinstance(problemas, dict):
+                    result[tipo] = problemas
+
+            return result
+        except Exception as e:
+            logger.error(f"❌ Error extrayendo problemas por tipo: {e}")
+            return {}
+
     def get_incident_types(self) -> Dict[str, IncidentType]:
         """
         Obtener todos los tipos de incidencia.

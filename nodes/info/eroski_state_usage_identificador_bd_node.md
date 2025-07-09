@@ -20,7 +20,7 @@ Este documento enumera los campos del estado `EroskiState` que son utilizados es
 |                      | `awaiting_user_input`        | ✅      | Se activa al pedir datos o mostrar errores |
 | ⚠️ Errores           | `error_occurred`             | ✅      | Se marca en `_handle_error()` |
 |                      | `error_details`              | ✅      | Detalle del error técnico ocurrido |
-| 🚨 Escalación        | `needs_escalation`           | ✅      | Si no se puede identificar o hay error crítico |
+| 🚨 Escalación        | `escalation_needed`           | ✅      | Si no se puede identificar o hay error crítico |
 |                      | `escalation_reason`          | ✅      | Texto como `"Usuario no encontrado"` o por error técnico |
 | 🧪 Confirmación (op.)| `pending_identification_data`| ⚠️ Opcional | Si se usa herramienta de confirmación externa |
 | 🧩 Custom            | `identification_stage`       | ⚠️ Custom | `"requesting_credentials"` al iniciar interacción |

@@ -29,7 +29,7 @@ Este nodo no usa campos relacionados con:
 
 - Clasificación de incidencias (`incident_type`, `incident_description`, etc.)
 - Soluciones (`solution_content`, `solution_found`, etc.)
-- Escalación técnica (`escalation_reason`, `needs_escalation`, etc.)
+- Escalación técnica (`escalation_reason`, `escalation_needed`, etc.)
 - Tickets y seguimiento (`ticket_id`, `follow_up_needed`, etc.)
 - Métricas (`satisfaction_score`, `resolution_time_minutes`, etc.)
 - Debug (`execution_path`, `debug_info`, etc.)

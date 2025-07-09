@@ -1,184 +1,168 @@
-import json
-from langgraph.types import Command
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
-from typing import List, Dict, Optional
-import asyncpg
-from datetime import datetime
-import logging
+def _get_specific_problems_for_type(self, incident_type: str) -> str:
+    """
+    Obtener una muestra de hasta 3 problemas específicos y sus soluciones para un tipo de incidencia.
+    """
 
-from config.settings import get_settings
-from models.eroski_state import EroskiState
-from nodes.base_node import BaseNode
-from utils.llm.providers import get_llm
+    try:
+        from config.incident_config import IncidentConfigLoader
+        config_loader = IncidentConfigLoader()
+        incident_types = config_loader.get_incident_types()
+
+        incident_data = incident_types.get(incident_type)
+        if not incident_data:
+            self.logger.warning(f"⚠️ Tipo de incidencia '{incident_type}' no encontrado en la configuración")
+            return f"• Problemas técnicos relacionados con {incident_type}"
+
+        
+        problemas = incident_data.get("problemas", {})
+        if not isinstance(problemas, dict) or not problemas:
+            self.logger.warning(f"⚠️ No hay problemas definidos para el tipo '{incident_type}'")
+            return f"• Problemas técnicos relacionados con {incident_type}"
+
+        # Seleccionar hasta 3 problemas como ejemplo
+        formatted = []
+        for i, (problema, solucion) in enumerate(problemas.items()):
+            if i >= 3:
+                break
+            formatted.append(f"""**{problema}**  
+Solución: {solucion}""")
+
+        result = "\n\n".join(formatted)
+        result += f"\n\n💡 Estos son solo algunos ejemplos comunes con el equipo **{incident_type}**. ¿Podrías describirme tu problema concreto?"
+
+        return result
+
+    except Exception as e:
+        self.logger.error(f"❌ Error cargando catálogo de problemas: {e}")
+        return f"• Problemas técnicos relacionados con {incident_type}"
 
 
-class RecogerDatosEmpleadoNode(BaseNode):
-    def __init__(self):
-        super().__init__("RecogerDatosEmpleado")
-        self.llm = get_llm()
-        self.logger = logging.getLogger("RecogerDatosEmpleadoNode")
-        self.tiendas = []
 
-        # Prompt para detectar intención de modificar o continuar
-        self.intencion_prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-Eres un asistente que detecta la intención del usuario respecto a sus datos personales.
-Los datos actuales del usuario son:
-{datos_actuales}
 
-El usuario ha dicho:
-{mensaje_usuario}
 
-¿El usuario quiere modificar alguno de sus datos (nombre, apellido, tienda, sección)?
-Responde solo con "modificar" o "continuar".
-            """),
-        ])
-
-        # Prompt para extraer datos del mensaje
-        self.extraccion_prompt = None  # Se construye dinámicamente en execute porque depende de tiendas
-
-    async def execute(self, state: EroskiState) -> Command:
-        messages = state.get("messages", [])
-        print(f"🙋‍♀️{messages}")
-        ultimo_msg = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
-        if not ultimo_msg:
-            return self._respuesta_ai("Hola, ¿cómo te llamas?")
-
-        mensaje_usuario = ultimo_msg.content.strip()
-
-        if not self.tiendas:
-            self.tiendas = await self._cargar_tiendas()
-
-        datos_actuales = {
-            "nombre": state.get("employee_name"),
-            "apellido": state.get("employee_lastname"),
-            "tienda": state.get("incident_store_name"),
-            "seccion": state.get("incident_department"),
-        }
-
-        # 1. Detectar intención con LLM
-        intencion_chain = self.intencion_prompt | self.llm
+    def _get_specific_problems_for_type(self, incident_type: str) -> str:
+        """
+        Obtener catálogo de problemas específicos para un tipo de incidencia
+        
+        Args:
+            incident_type: Tipo de incidencia (ej: "balanza", "tpv", etc.)
+            
+        Returns:
+            String formateado con los problemas específicos disponibles
+        """
+        
+        # ✅ CARGAR DESDE CONFIGURACIÓN DE INCIDENCIAS
         try:
-            intencion_response = await intencion_chain.ainvoke({
-                "datos_actuales": json.dumps(datos_actuales, ensure_ascii=False),
-                "mensaje_usuario": mensaje_usuario,
-            })
-            intencion = intencion_response.content.strip().lower()
+            print(f"🏅incident_type: {incident_type}")
+            from config.incident_config import IncidentConfigLoader
+            config_loader = IncidentConfigLoader()
+            incident_types = config_loader.get_incident_types()
+            print("🏅check 0")
+            print(f"🏅incident_types: {incident_types}")
+            if incident_type in incident_types:
+                print("🏅check 1")
+                incident_data = incident_types[incident_type]
+                print("🏅check 1.1")
+                print(f"🏅incident_data: {incident_data}")
+                # Verificar si tiene estructura "problemas"
+                if "problemas" in get_type_hints(type(incident_data)):
+                    print("🏅check 2: ")
+                    problems = incident_data["problemas"]
+                    
+                    # Formatear problemas para el prompt
+                    formatted_problems = []
+                    for problem_key, solution in problems.items():
+                        print("🏅check 3")
+                        formatted_problems.append(f"• **{problem_key}**")
+                    
+                    return "\n".join(formatted_problems)
+                
+                # Fallback: estructura antigua
+                elif "description" in get_type_hints(type(incident_data)):
+                    print("🏅check 4")
+                    return f"• Problemas diversos relacionados con {incident_type}"
+            print("🏅check 5")
+            
+            self.logger.warning(f"⚠️ No se encontraron problemas específicos para {incident_type}")
+            return f"• Problemas técnicos relacionados con {incident_type}"
+            
         except Exception as e:
-            self.logger.warning(f"❌ Error detectando intención: {e}")
-            intencion = "continuar"  # fallback seguro
-
-        # 2. Construir prompt de extracción con tiendas
-        self.extraccion_prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""
-Eres un asistente de Eroski que debe extraer 4 campos del mensaje del usuario:
-- nombre
-- apellido
-- tienda (de esta lista: {', '.join(self.tiendas[:20])})
-- seccion (Carnicería, Pescadería, Panadería, Caja, etc)
-
-Los datos actuales son:
-{json.dumps(datos_actuales, ensure_ascii=False)}
-
-Si el usuario quiere modificar algún dato, actualízalo. Si no, mantenlos igual.
-Si algún campo no está en el mensaje, ponlo como null.
-
-Responde en JSON:
-{{"nombre": ..., "apellido": ..., "tienda": ..., "seccion": ...}}
-            """),
-            ("human", "{input}")
-        ])
-        extraccion_chain = self.extraccion_prompt | self.llm
-
-        nuevo_estado = state.copy()
-        nuevo_estado["last_activity"] = datetime.now()
-
-        if intencion == "modificar":
-            try:
-                response = await extraccion_chain.ainvoke({"input": mensaje_usuario})
-                data = self._parsear_respuesta(response.content)
-            except Exception as e:
-                self.logger.warning(f"❌ Error interpretando mensaje: {e}")
-                return self._respuesta_ai("No he entendido tu mensaje. ¿Podrías repetirlo más claramente?")
-
-            # Actualizar datos solo si vienen no nulos
-            if data.get("nombre") is not None: nuevo_estado["employee_name"] = data["nombre"]
-            if data.get("apellido") is not None: nuevo_estado["employee_lastname"] = data["apellido"]
-            if data.get("tienda") is not None: nuevo_estado["incident_store_name"] = data["tienda"]
-            if data.get("seccion") is not None: nuevo_estado["incident_department"] = data["seccion"]
-
-            resumen = (
-                f"✅ He actualizado tus datos:\n\n"
-                f"👤 {nuevo_estado.get('employee_name', 'No especificado')} {nuevo_estado.get('employee_lastname', '')}\n"
-                f"🏬 Tienda: {nuevo_estado.get('incident_store_name', 'No especificada')}\n"
-                f"🧭 Sección: {nuevo_estado.get('incident_department', 'No especificada')}\n\n"
-                "¿Es correcto? ¿Quieres modificar algo más?"
-            )
-            nuevo_estado["messages"] = messages + [AIMessage(content=resumen)]
-            return Command(update=nuevo_estado)
-
-        elif intencion == "continuar":
-            # Verificar si datos completos
-            campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
-            if all(nuevo_estado.get(campo) for campo in campos):
-                resumen = (
-                    f"✅ Te he identificado:\n\n"
-                    f"👤 {nuevo_estado['employee_name']} {nuevo_estado['employee_lastname']}\n"
-                    f"🏬 Tienda: {nuevo_estado['incident_store_name']}\n"
-                    f"🧭 Sección: {nuevo_estado['incident_department']}\n\n"
-                    "¿En qué puedo ayudarte?"
-                )
-                nuevo_estado["authenticated"] = True
-                nuevo_estado["current_node"] = "classify_query"
-                nuevo_estado["messages"] = messages + [AIMessage(content=resumen)]
-                return Command(update=nuevo_estado)
-            else:
-                faltan = []
-                if not nuevo_estado.get("employee_name"): faltan.append("tu nombre")
-                if not nuevo_estado.get("employee_lastname"): faltan.append("tu apellido")
-                if not nuevo_estado.get("incident_store_name"): faltan.append("la tienda donde trabajas")
-                if not nuevo_estado.get("incident_department"): faltan.append("tu sección")
-
-                pregunta = "¿Podrías decirme " + " y ".join(faltan) + "?"
-                nuevo_estado["messages"] = messages + [AIMessage(content=pregunta)]
-                return Command(update=nuevo_estado)
-
-        else:
-            # Fallback en caso de respuesta inesperada
-            self.logger.warning(f"Respuesta de intención inesperada: {intencion}")
-            pregunta = "No he entendido si quieres modificar tus datos o continuar. ¿Podrías aclararlo?"
-            nuevo_estado["messages"] = messages + [AIMessage(content=pregunta)]
-            return Command(update=nuevo_estado)
-
-    async def _cargar_tiendas(self) -> List[str]:
-        try:
-            conn = await asyncpg.connect(get_settings().database.connection_string)
-            rows = await conn.fetch("SELECT nombre_tienda FROM maestro_tiendas ORDER BY nombre_tienda")
-            await conn.close()
-            return [row["nombre_tienda"] for row in rows]
-        except Exception as e:
-            self.logger.error(f"❌ Error cargando tiendas: {e}")
-            return ["Hipermercado Bilbondo", "Center Durango", "Eroski Gernika"]
-
-    def _parsear_respuesta(self, texto: str) -> Dict[str, Optional[str]]:
-        import json
-        if "```" in texto:
-            texto = texto.strip("```json").strip("```")
-        return json.loads(texto)
-
-    def _respuesta_ai(self, texto: str) -> Command:
-        return Command(update={"messages": [AIMessage(content=texto)], "current_node": "recoger_datos"})
-
-    def get_required_fields(self) -> list[str]:
-        return ["messages", "session_id"]
-
-    def get_actor_description(self) -> str:
-        return "Nodo encargado de recoger los datos básicos del empleado"
+            self.logger.error(f"❌ Error cargando catálogo de problemas: {e}")
+            
+            # ✅ FALLBACK: Catálogo hardcodeado básico
+            fallback_problems = {
+                "balanza": """• **No enciende**
+    • **No imprime etiquetas**
+    • **Las etiquetas salen en blanco**
+    • **Error de calibración**
+    • **Precio incorrecto en etiquetas**
+    • **No lee códigos de barras**
+    • **Pantalla borrosa o dañada**
+    • **Problemas de conectividad**""",
+                
+                "tpv": """• **TPV no enciende**
+    • **No lee tarjetas de crédito**
+    • **Error en el cajón de efectivo**
+    • **Problemas con el lector de códigos de barras**
+    • **La pantalla táctil no responde**
+    • **No imprime tickets**
+    • **Error de comunicación con el servidor**""",
+                
+                "impresora": """• **No imprime documentos**
+    • **Impresión borrosa o con líneas**
+    • **Atasco de papel**
+    • **Error de tinta o tóner**
+    • **No reconoce el formato de papel**
+    • **Problemas de conectividad**""",
+                
+                "red": """• **Sin conexión a internet**
+    • **WiFi muy lento**
+    • **No puede acceder a aplicaciones corporativas**
+    • **Error de conexión intermitente**
+    • **Problemas con VPN**""",
+                
+                "ordenador": """• **El ordenador no enciende**
+    • **Pantalla azul o error del sistema**
+    • **Muy lento al trabajar**
+    • **No reconoce dispositivos USB**
+    • **Problemas con aplicaciones específicas**""",
+                
+                "telefono": """• **No hay línea telefónica**
+    • **No se escucha al otro lado**
+    • **Problemas con extensiones internas**
+    • **Error en el sistema de intercomunicación**"""
+            }
+            
+        return fallback_problems.get(incident_type, f"• Problemas técnicos relacionados con {incident_type}")
 
 
-# Wrapper para LangGraph
 
-async def recoger_datos_empleado_node(state: EroskiState) -> Command:
-    node = RecogerDatosEmpleadoNode()
-    return await node.execute(state)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Campo	Tipo	¿Dónde se usa?	Descripción
+incident_code	str	Nodo	ID único generado por IncidentCodeManager
+messages	list	Nodo / Prompt	Historial de mensajes (HumanMessage / AIMessage)
+incident_type	str	Fase 1	Tipo de equipo identificado
+problem_description	str	Fase 2	Descripción textual del problema
+specific_problem	str	Fase 2	Problema del catálogo
+proposed_solution	str	Fase 2	Solución recomendada del catálogo
+confidence_score	float	Fase 1 / 2	Nivel de certeza del LLM
+current_step	str	Nodo / grafo	Estado del nodo: classify, verify_solution, escalate, etc.
+conversation_ended	bool	Nodo	Señal de cierre de conversación
+error_occurred	bool	_handle_error	Si ha fallado algo en el flujo
+auth_data_collected	dict	Prompt	Información del empleado (nombre, tienda, sección)
+classify_data	dict	Fase 2	Info avanzada de clasificación (progreso, keywords, loop, etc.)

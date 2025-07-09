@@ -3,6 +3,8 @@
 # =====================================================
 
 from typing import Dict, Any, Optional, List
+from typing import get_type_hints
+
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from datetime import datetime
@@ -217,6 +219,10 @@ class TwoPhaseClassifier:
             self.logger.info("🔍 FASE 1: Identificando tipo de incidencia...")
             
             phase1_result = await self._execute_phase_1(state)
+
+            print(f"👹Resultados de FASE 1: {phase1_result}")
+            
+            # Actualizar estado con resultados de FASE 1
             
             if phase1_result.incident_type_identified and phase1_result.confidence_level >= 0.7:
                 # Actualizar estado con tipo identificado
@@ -228,15 +234,18 @@ class TwoPhaseClassifier:
                 return await self._execute_phase_2_with_state(updated_state)
             
             elif phase1_result.needs_clarification:
+                self.logger.info("👹necesiada de clarificación type")
                 # Necesita más información para identificar tipo
                 return self._ask_for_type_clarification(state, phase1_result)
             
             else:
+                self.logger.info("👹necesiada de clarificación general")
                 # Confianza baja, pedir más información
                 return self._ask_general_clarification(state)
         
         # ✅ FASE 2: Identificar PROBLEMA ESPECÍFICO
         else:
+            print(f"👹get incident type: {state.get('incident_type')}")
             self.logger.info(f"🔍 FASE 2: Identificando problema específico para {state.get('incident_type')}...")
             return await self._execute_phase_2_with_state(state)
     
@@ -269,6 +278,7 @@ class TwoPhaseClassifier:
         """Ejecutar FASE 2 con validación mejorada"""
         
         try:
+            print(f"🌄Entramos en la fase 2")
             # Ejecutar Fase 2
             phase2_result = await self._execute_phase_2(state)
             
@@ -310,7 +320,7 @@ class TwoPhaseClassifier:
                 update={
                     **state,
                     "last_error": f"Error en clasificación: {str(e)}",
-                    "needs_escalation": True
+                    "escalation_needed": True
                 },
                 graph=self._create_error_response_with_escalation(state, str(e))
             )
@@ -788,89 +798,44 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
 
     def _get_specific_problems_for_type(self, incident_type: str) -> str:
         """
-        Obtener catálogo de problemas específicos para un tipo de incidencia
-        
-        Args:
-            incident_type: Tipo de incidencia (ej: "balanza", "tpv", etc.)
-            
-        Returns:
-            String formateado con los problemas específicos disponibles
+        Obtener una muestra de hasta 3 problemas específicos y sus soluciones para un tipo de incidencia.
         """
-        
-        # ✅ CARGAR DESDE CONFIGURACIÓN DE INCIDENCIAS
+
         try:
             from config.incident_config import IncidentConfigLoader
             config_loader = IncidentConfigLoader()
             incident_types = config_loader.get_incident_types()
-            if incident_type in incident_types:
-                incident_data = incident_types[incident_type]
-                
-                # Verificar si tiene estructura "problemas"
-                if "problemas" in incident_data:
-                    problems = incident_data["problemas"]
-                    
-                    # Formatear problemas para el prompt
-                    formatted_problems = []
-                    for problem_key, solution in problems.items():
-                        formatted_problems.append(f"• **{problem_key}**")
-                    
-                    return "\n".join(formatted_problems)
-                
-                # Fallback: estructura antigua
-                elif "description" in incident_data:
-                    return f"• Problemas diversos relacionados con {incident_type}"
+
+            incident_data = incident_types.get(incident_type)
+            problemas = config_loader.get_incidentes_problemas()
+            problemas_soluc= problemas[incident_type]
+            if not incident_data:
+                self.logger.warning(f"⚠️ Tipo de incidencia '{incident_type}' no encontrado en la configuración")
+                return f"• Problemas técnicos relacionados con {incident_type}"
+
             
-            self.logger.warning(f"⚠️ No se encontraron problemas específicos para {incident_type}")
-            return f"• Problemas técnicos relacionados con {incident_type}"
             
+            if not isinstance(problemas_soluc, dict) or not problemas_soluc:
+                self.logger.warning(f"⚠️ No hay problemas definidos para el tipo '{incident_type}'")
+                return f"• Problemas técnicos relacionados con {incident_type}"
+
+            # Seleccionar hasta 3 problemas como ejemplo
+            formatted = []
+            for i, (problema, solucion) in enumerate(problemas_soluc.items()):
+                if i >= 3:
+                    break
+                formatted.append(f"""**{problema}**  
+            Solución: {solucion}""")
+
+            result = "\n\n".join(formatted)
+            result += f"\n\n💡 Estos son solo algunos ejemplos comunes con el equipo **{incident_type}**. ¿Podrías describirme tu problema concreto?"
+
+            return result
+
         except Exception as e:
             self.logger.error(f"❌ Error cargando catálogo de problemas: {e}")
-            
-            # ✅ FALLBACK: Catálogo hardcodeado básico
-            fallback_problems = {
-                "balanza": """• **No enciende**
-    • **No imprime etiquetas**
-    • **Las etiquetas salen en blanco**
-    • **Error de calibración**
-    • **Precio incorrecto en etiquetas**
-    • **No lee códigos de barras**
-    • **Pantalla borrosa o dañada**
-    • **Problemas de conectividad**""",
-                
-                "tpv": """• **TPV no enciende**
-    • **No lee tarjetas de crédito**
-    • **Error en el cajón de efectivo**
-    • **Problemas con el lector de códigos de barras**
-    • **La pantalla táctil no responde**
-    • **No imprime tickets**
-    • **Error de comunicación con el servidor**""",
-                
-                "impresora": """• **No imprime documentos**
-    • **Impresión borrosa o con líneas**
-    • **Atasco de papel**
-    • **Error de tinta o tóner**
-    • **No reconoce el formato de papel**
-    • **Problemas de conectividad**""",
-                
-                "red": """• **Sin conexión a internet**
-    • **WiFi muy lento**
-    • **No puede acceder a aplicaciones corporativas**
-    • **Error de conexión intermitente**
-    • **Problemas con VPN**""",
-                
-                "ordenador": """• **El ordenador no enciende**
-    • **Pantalla azul o error del sistema**
-    • **Muy lento al trabajar**
-    • **No reconoce dispositivos USB**
-    • **Problemas con aplicaciones específicas**""",
-                
-                "telefono": """• **No hay línea telefónica**
-    • **No se escucha al otro lado**
-    • **Problemas con extensiones internas**
-    • **Error en el sistema de intercomunicación**"""
-            }
-            
-        return fallback_problems.get(incident_type, f"• Problemas técnicos relacionados con {incident_type}")
+            return f"• Problemas técnicos relacionados con {incident_type}"
+ 
 
     def _get_equipment_types_list(self) -> str:
         """Obtener lista de tipos de equipamiento disponibles"""
@@ -930,7 +895,7 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
             **state,
             "messages": state["messages"] + [AIMessage(content=escalation_message)],
             "current_node": "escalate",
-            "needs_escalation": True,
+            "escalation_needed": True,
             "escalation_reason": "Problema complejo identificado en clasificación"
         }
         
@@ -953,10 +918,11 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
     • **Teléfono** - Sistema telefónico
 
     ¿Cuál de estos equipos está presentando el problema?"""
-
+        for key, value in state.items():
+            print(f"👹{key}: {value}")
         updated_state = {
             **state,
-            "messages": state["messages"] + [AIMessage(content=clarification_message)],
+            "messages": [AIMessage(content=clarification_message)],
             "current_node": "classify",
             "awaiting_type_clarification": True
         }
@@ -1000,7 +966,7 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
             **state,
             "messages": state["messages"] + [AIMessage(content=error_message)],
             "current_node": "escalate",
-            "needs_escalation": True,
+            "escalation_needed": True,
             "escalation_reason": "Error técnico en clasificación"
         }
         

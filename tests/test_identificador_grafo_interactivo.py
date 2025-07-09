@@ -18,9 +18,15 @@ from models.eroski_state import create_initial_eroski_state, EroskiState
 from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_manual import recoger_datos_empleado_node
+from nodes.classify_node import classify_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
-
+import logging
+logging.basicConfig(
+    level=logging.INFO,  # Puedes usar DEBUG, INFO, WARNING, ERROR, CRITICAL
+    format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
 class InteractiveGrafoTester:
     def __init__(self):
         self.session_counter = 0
@@ -32,15 +38,20 @@ class InteractiveGrafoTester:
         builder.add_node("orquestador", identificador_orquestador_node)
         builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
         builder.add_node("recoger_datos", recoger_datos_empleado_node)
-        
+        builder.add_node("clasificador", classify_node)
+
+
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
             #campos = ["modificaciones_pendientes", "employee_name", "employee_lastname", "incident_store_name", "incident_department"]
-            #for campo in campos:
-            #    print(f"🎛️ {campo}: {state.get(campo, False)}")
+            for key, value in state.items():
+                print(f"🎛️ {key}: {value}")
+            ok = True
+            if ok:
+                return "clasificador"
             if state.get("authenticated"):
-                return END
+                return "clasificador"
             if state.get("awaiting_user_input") and state.get("current_node") == "recoger_datos":
                 return END
             if state.get("email_authen_tried", False) and state.get("employee_id_authent_tried", False):
@@ -51,9 +62,11 @@ class InteractiveGrafoTester:
         builder.add_conditional_edges("orquestador", route, {
             "identificador_base_de_datos": "identificador_base_de_datos",
             "recoger_datos": "recoger_datos",
+            "clasificador": "clasificador",
             END: END
         })
         builder.add_edge("recoger_datos", END)
+        builder.add_edge("clasificador", END)
 
         return builder.compile()
 
@@ -83,7 +96,9 @@ class InteractiveGrafoTester:
         messages = self.state.get("messages", [])
         last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
         if last:
-            print(f"🧩\n🤖 AGENTE: {last.content}")
+            print("🧩"*100)
+            print(f"🧩🤖 AGENTE: {last.content}")
+            print("🧩"*100)
             campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
             for campo in campos:
                 print(f"{self.state.get(campo)}") if self.state.get(campo) else None

@@ -115,6 +115,7 @@ class EroskiState(TypedDict, total=False):
     aditional_info: Optional[str]           # Información adicional sobre el problem
     
     # ========== BÚSQUEDA DE SOLUCIÓN ==========
+    awaiting_solution_confirmation: bool   # Si estás esperando que el usuario confirme si la solución funcionó
     solution_found: bool                    # Si se encontró solución
     solution_type: Optional[SolutionType]  # Tipo de solución aplicada
     solution_content: Optional[str]        # Contenido de la solución
@@ -150,7 +151,14 @@ class EroskiState(TypedDict, total=False):
     satisfaction_score: Optional[int]      # Puntuación de satisfacción (1-5)
     resolution_time_minutes: Optional[float] # Tiempo total de resolución
     automated_resolution: bool             # Si se resolvió automáticamente
-    
+    classification_confidence_history: Optional[List[float]] #Para registrar la evolución de la confianza en clasificación si haces múltiples pasos.
+    auto_classify_attempted: bool          # Si estás usando el helper para intentar clasificar automáticamente con los mensajes del usuario.
+    historical_info_found: Optional[str]   # Ya lo usas en la decisión, puedes reflejarlo también en el estado si quieres persistirlo.
+
+
+
+
+
     # ========== METADATOS TEMPORALES ==========
     start_time: datetime                   # Inicio de la conversación
     end_time: Optional[datetime]           # Fin de la conversación

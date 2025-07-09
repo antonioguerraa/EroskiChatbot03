@@ -24,7 +24,7 @@
 |                          | `solution_type`              | ❌      | –                                                           | Manual / automática / guía paso a paso       |
 |                          | `resolution_steps`           | ❌      | –                                                           | Mostrar pasos desglosados                    |
 |                          | `automated_resolution`       | ❌      | –                                                           | Métricas de resolución automática            |
-| 🚨 Escalación            | `needs_escalation`           | ✅      | Se marca en decisiones LLM o errores                        | –                                            |
+| 🚨 Escalación            | `escalation_needed`           | ✅      | Se marca en decisiones LLM o errores                        | –                                            |
 |                          | `escalation_reason`          | ✅      | Visible en el mensaje al supervisor                         | –                                            |
 |                          | `supervisor_id`              | ❌      | –                                                           | Asignación dinámica futura                   |
 |                          | `escalation_contacts`        | ❌      | –                                                           | Email/Teléfono de contacto preferente        |
