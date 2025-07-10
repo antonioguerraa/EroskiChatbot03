@@ -1,0 +1,56 @@
+Desarrolla un nodo llamado identificacion_node.py como parte de un sistema conversacional construido con LangGraph para el chatbot de soporte técnico de Eroski.
+🧠 OBJETIVO:
+Este nodo se activa cuando el usuario ya ha sido autenticado (state["authenticated"] == True), y su función es conversar con el usuario para identificar el tipo de incidencia técnica (ej: balanza, TPV, impresora…).
+📦 ARCHIVOS DISPONIBLES:
+- El estado global se define en models/eroski_state.py (TypedDict llamado EroskiState).
+- Las incidencias están en data/eroski_incidents.json con este formato:
+``json
+{
+  "incident_types": {
+    "balanza": {
+      "description": "...",
+      "problemas": {
+        "La balanza no imprime...": "Solución...",
+        ...
+      }
+    },
+    ...
+  }
+}
+* El LLM se obtiene desde utils/llm/providers/get_llm()
+* Las variables de entorno están en .env
+* Hay una tool de confirmación reutilizable en nodes/tools/confirmation_tool.py (puedes usarla como función, método o Tool de LangChain)
+⚙️ FUNCIONAMIENTO ESPERADO DEL NODO:
+1. **Carga representativa de tipos comunes:**
+   * Al iniciar la conversación, el nodo muestra 2–3 ejemplos representativos de los tipos más comunes (balanza, TPV, impresora) para orientar al usuario.
+   * Esta selección se puede hacer directamente en código o cargando desde el archivo.
+2. **Recuperación semántica:**
+   * Antes de invocar el LLM, el nodo genera o utiliza embeddings de los títulos de problemas en el JSON.
+   * Dado el mensaje del usuario, calcula similitud semántica y selecciona los 3 problemas más cercanos como contexto.
+   * Este subset se pasa al prompt del LLM.
+3. **Agente React con Tool:**
+   * Implementa un agente React con una Tool llamada identify_incident_type`.
+   * Esta Tool toma como entrada el mensaje del usuario y devuelve:
+
+json
+CopyEdit
+{ "incident_type": "balanza", "confidence": 0.87, "keywords": ["etiqueta", "precio"] }
+   * Si la confianza es ≥ 0.75, se activa pending_confirmation y se pregunta al usuario: "Parece que el problema es con la balanza. ¿Es correcto?"
+4. Confirmación de tipo:
+   * Si pending_confirmation es True, se interpreta la respuesta del usuario usando la tool ConfirmationTool.
+   * Si el usuario responde afirmativamente, se actualiza:
+
+python
+CopyEdit
+state["incident_type"] = tipo_detectado state["pending_confirmation"] = False state["current_node"] = "siguiente_nodo" state["awaiting_user_input"] = True
+   * Si responde “no”, se continúa buscando.
+5. Control de flujo:
+   * Cuando se identifica el tipo y se confirma, el nodo devuelve un Command(update=...) para avanzar al siguiente nodo.
+   * Si no hay suficiente información, se pregunta de nuevo.
+   * Usa el campo messages del estado para continuar el hilo de conversación.
+📌 Consideraciones:
+* Usa current_node y awaiting_user_input para devolver correctamente el control.
+* Estructura el código con claridad: Tool, agente, nodo, helper para embeddings.
+* Si el LLM falla, debe manejarse con un fallback educado.
+🔧 BONUS: Puedes cargar las incidencias como desees: en memoria, parseadas, o como BaseRetriever si prefieres usar LangChain.
+🚀 Resultado esperado: Un archivo identificacion_node.py funcional que permita una conversación natural con el usuario para identificar y confirmar el tipo de incidencia.

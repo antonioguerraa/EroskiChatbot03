@@ -14,6 +14,7 @@ from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_manual import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
 from nodes.identificacion_node import identificacion_node
+from nodes.buscar_solucion_node import buscar_solucion_node
 from langchain_core.messages import AIMessage
 
 
@@ -33,7 +34,9 @@ class IdentificadorOrquestadorNode:
             return Command(update={
                 "current_node": self.node_name,
                 "authenticated":True,
-                "last_activity": datetime.now()
+                "incident_type_confirmed": True,
+                "last_activity": datetime.now(),
+                "incident_type": "balanza"
             })
         if state.get("authenticated", False):
             return Command(update={
@@ -45,6 +48,8 @@ class IdentificadorOrquestadorNode:
             return await recoger_datos_empleado_node(state)
         else:
             return await identificador_base_de_datos_node(state)
+
+   
 
     def _debe_usar_identificacion_manual(self, state: EroskiState) -> bool:
         return (

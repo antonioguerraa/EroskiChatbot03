@@ -108,12 +108,16 @@ class EroskiState(TypedDict, total=False):
     incident_id: Optional[str]              # ID único de la incidencia
     incident_type: Optional[str]            # Tipo específico (desde JSON config)
     incident_description: Optional[str]     # Descripción del problema
+    problem_description: Optional[str]     # Descripción del problema
     incident_details: Optional[Dict[str, Any]] # Detalles específicos
     affected_equipment: Optional[str]       # Equipo afectado
     error_codes: Optional[List[str]]        # Códigos de error reportados
     incident_location: Optional[str]        # Ubicación específica en tienda
     aditional_info: Optional[str]           # Información adicional sobre el problem
     identification_source: Optional[str]    # De donde obtuvo el tipo la incidencia
+    pending_incident_type: Optional[str]    # Incidencia identificada pte confirmación
+    incident_type_confirmed: bool          # Si el tipo de incidencia fue confirmado
+
     # ========== BÚSQUEDA DE SOLUCIÓN ==========
     awaiting_solution_confirmation: bool   # Si estás esperando que el usuario confirme si la solución funcionó
     solution_found: bool                    # Si se encontró solución
@@ -123,6 +127,7 @@ class EroskiState(TypedDict, total=False):
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
     solucion_catalogo: bool                # dice si la solución se encontró en el catálogo
     consultar_manual: bool                 # Si debe consultar el manual
+    
     # ========== ESCALACIÓN ==========
     escalation_needed: bool                # Si requiere escalación
     escalation_reason: Optional[str]       # Motivo de escalación

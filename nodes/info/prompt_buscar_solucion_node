@@ -1,0 +1,96 @@
+💬 Prompt para Claude
+
+Eres un desarrollador experto en LangGraph, LangChain y agentes conversacionales para soporte técnico. Tu tarea es crear un nodo de LangGraph en Python llamado `buscar_solucion_node.py`.
+
+Este nodo forma parte de un sistema conversacional para el chatbot de soporte técnico de Eroski.
+
+## 🎯 OBJETIVO DEL NODO:
+El nodo se activa cuando el estado contiene un `incident_type` válido. Su misión es identificar el problema específico que está ocurriendo (por ejemplo, “la balanza no imprime las etiquetas”) y proporcionar la mejor solución posible desde dos fuentes:
+1. Un archivo local `data/eroski_incidents.json` con problemas frecuentes y soluciones asociadas.
+2. Una tabla PostgreSQL llamada `knowledge_base` que contiene manuales vectorizados para recuperación semántica (RAG).
+
+## 📂 ESTRUCTURA DE ARCHIVOS:
+1. El estado `EroskiState` está definido en `models/eroski_state.py` como un `TypedDict`. Campos relevantes:
+   - incident_type (str)
+   - problem_description (str)
+   - problem_identified (bool)
+   - pending_confirmation (bool)
+   - solution_found (bool)
+   - solution_content (str)
+   - messages (list[BaseMessage])
+   - current_node (str)
+   - awaiting_user_input (bool)
+
+2. Archivo JSON `data/eroski_incidents.json`:
+```json
+{
+  "incident_types": {
+    "balanza": {
+      "description": "...",
+      "problemas": {
+        "La balanza no imprime las etiquetas": "Comprobar si tiene papel...",
+        ...
+      }
+    },
+    ...
+  }
+}
+
+3. La tabla PostgreSQL knowledge_base contiene:
+
+    -chunk_text, chunk_embedding, documento_origen, pagina_numero, palabras_clave, etc.
+    -El campo chunk_embedding tiene índice ivfflat.
+
+🔧 FUNCIONAMIENTO:
+    1.Inicio del nodo:
+        -Si no se ha identificado aún el problema, muestra 2–3 ejemplos frecuentes del JSON.
+    2. Agente ReAct (LangChain) con 2 tools:
+        -identify_problem:
+        -Entrada: mensaje del usuario.
+        -Devuelve:
+
+        json
+            {
+            "problema": "La balanza no imprime las etiquetas",
+            "solucion": "Comprobar si tiene papel...",
+            "confidence": 0.87,
+            "keywords": ["etiqueta", "papel"]
+        }
+        -Si confidence >= 0.75, se pregunta al usuario: “Parece que el problema es con X. ¿Puedes confirmarlo?”, y se pone pending_confirmation = True.
+
+        -buscar_solucion_en_manual:
+            -Hace RAG sobre la tabla PostgreSQL knowledge_base.
+            -Devuelve un texto con la mejor solución encontrada.
+
+3. Confirmación del usuario:
+    -Si pending_confirmation = True, se usa ConfirmationTool (ya implementada) para verificar si el usuario confirma.
+    -Si confirma:
+        -Se marca problem_identified = True y se guarda el problem_description.
+        -Se consultan las dos fuentes (JSON + RAG) y se muestran ambas soluciones.
+        -Se pregunta: “¿Esta solución resuelve tu problema?”
+4. Evaluación de solución:
+    -Si el usuario confirma que la solución es válida:
+        -solution_found = True
+        -Se guarda en solution_content.
+    -Si no, se permite seguir refinando el problema.
+    -Si tras 3 intentos no se encuentra solución, se activa escalation_needed = True.
+
+⚙️ RECURSOS DISPONIBLES:
+    -get_llm() y get_vectorizer() desde utils/llm/providers.py
+    -ConfirmationTool ya disponible en nodes/tools/confirmation_tool.py
+    -.env cargado mediante get_settings()
+
+🧠 CONSIDERACIONES:
+    -Debe manejar errores del LLM con fallbacks educados.
+    -Controla current_node y awaiting_user_input para mantener el flujo.
+    -Evita bucles infinitos con control de intentos.
+    -Compatible con LangGraph y EroskiState.
+
+✅ TU TAREA:
+Crea el archivo completo buscar_solucion_node.py que implemente este comportamiento. Usa clases o funciones si es necesario, y mantén el código limpio, estructurado y comentado.
+
+El resultado debe ser un archivo funcional y modular, listo para integrar en un grafo LangGraph.
+
+
+
+

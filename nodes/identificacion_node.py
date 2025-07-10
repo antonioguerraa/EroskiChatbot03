@@ -817,7 +817,7 @@ HISTORIAL DE PENSAMIENTOS:
         """Ejecutar lógica principal del nodo de identificación"""
         try:
             self.logger.info("🔍 Iniciando identificación de incidencia")
-            
+            print(f"👹check 1")
             # Verificar autenticación
             if not state.get("authenticated"):
                 self.logger.warning("⚠️ Usuario no autenticado")
@@ -829,12 +829,18 @@ HISTORIAL DE PENSAMIENTOS:
                     "awaiting_user_input": True
                 })
             
+            print(f"👹check 2")
             messages = state.get("messages", [])
             
             # Obtener último mensaje del usuario Y analizar historial completo
             last_message, all_user_messages = self._extract_user_messages(messages)
-            
+            print(f"👹check 4")
+            # Procesar confirmación pendiente
+            if state.get("pending_confirmation"):
+                return await self._handle_confirmation(state, last_message)
+            print(f"👹check 3")
             # Si es la primera vez en este nodo, analizar historial ANTES de mostrar ejemplos
+            print(f"👹 identification_starter: {state.get('identification_started')}")
             if not state.get("identification_started"):
                 # Análisis histórico completo antes de mostrar ejemplos
                 if all_user_messages:
@@ -885,9 +891,7 @@ Por favor, describe el problema que estás experimentando o menciona qué equipo
                     "awaiting_user_input": True
                 })
             
-            # Procesar confirmación pendiente
-            if state.get("pending_confirmation"):
-                return await self._handle_confirmation(state, last_message)
+
             
             # Procesar mensaje considerando TANTO el último mensaje COMO el historial
             if last_message and self.agent:
@@ -979,14 +983,7 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
             docs_text = self.identify_tool._format_retriever_documents(relevant_documents)
             user_messages_text = "\n".join([f"{i+1}. {msg}" for i, msg in enumerate(user_messages)])
             
-            # Ejecutar análisis
-            formatted_prompt = historical_prompt.format(
-                employee_name=employee_name,
-                store_name=store_name,
-                section=section,
-                relevant_documents=docs_text,
-                user_messages_text=user_messages_text
-            )
+        
             
             class HistoricalAnalysis(BaseModel):
                 incident_found: bool = Field(description="Detecta si encontró el incidente")
@@ -1093,8 +1090,9 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                 response_text = f"¡Perfecto! He confirmado que el problema es con **{incident_type}**. Ahora vamos a recopilar más detalles sobre la incidencia."
                 
                 return Command(update={
-                    "messages": state["messages"] + [AIMessage(content=response_text)],
+                    "messages": [AIMessage(content=response_text)],
                     "incident_type": incident_type,
+                    "incident_type_confirmed": True,
                     "pending_confirmation": False,
                     "pending_incident_type": None,
                     "current_node": "collect_incident_details",  # Siguiente nodo
