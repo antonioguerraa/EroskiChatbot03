@@ -51,7 +51,13 @@ class InteractiveGrafoTester:
                       "awaiting_user_input", 
                       "resolved", 
                       "automated_resolution",
-                      "incident_id"]
+                      "incident_id",
+                      "awaiting_user_input",
+                      "current_node",
+                      "identification_source",
+                      "pending_confirmation", 
+
+                      ]
             for campo in campos:
                 print(f"🎛️ {campo}: {state.get(campo)}")
             ok = True

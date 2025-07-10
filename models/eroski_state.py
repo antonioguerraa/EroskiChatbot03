@@ -113,7 +113,7 @@ class EroskiState(TypedDict, total=False):
     error_codes: Optional[List[str]]        # Códigos de error reportados
     incident_location: Optional[str]        # Ubicación específica en tienda
     aditional_info: Optional[str]           # Información adicional sobre el problem
-    
+    identification_source: Optional[str]    # De donde obtuvo el tipo la incidencia
     # ========== BÚSQUEDA DE SOLUCIÓN ==========
     awaiting_solution_confirmation: bool   # Si estás esperando que el usuario confirme si la solución funcionó
     solution_found: bool                    # Si se encontró solución

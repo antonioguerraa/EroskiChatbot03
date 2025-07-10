@@ -28,6 +28,9 @@ import asyncio
 import logging
 from datetime import datetime
 
+import psycopg2
+import psycopg2.extras
+
 # LangChain imports
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
@@ -38,6 +41,8 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from pydantic import BaseModel, Field
+from pydantic import PrivateAttr
+from langchain_core.output_parsers import JsonOutputParser
 
 # LangGraph imports
 from langgraph.types import Command
@@ -78,26 +83,31 @@ class EroskiIncidentRetriever(BaseRetriever):
     
     Usa get_vectorizer() del proyecto y base de datos PostgreSQL para búsqueda semántica.
     """
+    _incidents_data: Dict[str, Any] = PrivateAttr()
+    _vectorizer = PrivateAttr()
+    _db_config = PrivateAttr()
     
     def __init__(self, incidents_data: Dict[str, Any], **kwargs):
         super().__init__(**kwargs)
-        self.incidents_data = incidents_data
-        self.vectorizer = None
-        self.db_config = None
+        print("👹👹entra en EroskiIncidentRetriever ")
+        self._incidents_data = incidents_data
+        self._vectorizer = None
+        self._db_config = None
         self._setup_retriever()
     
     def _setup_retriever(self):
         """Configurar vectorizer y conexión a BD"""
         try:
             # Usar get_vectorizer del proyecto (mismo que se usó para generar embeddings)
-            self.vectorizer = get_vectorizer()
+            self._vectorizer = get_vectorizer()
             
             # Configurar parámetros de BD
             settings = get_settings()
-            self.db_config = {
+
+            self._db_config = {
                 'host': settings.database.host,
                 'port': settings.database.port,
-                'database': settings.database.name,
+                'database': settings.database.name,  # 'dbname' para psycopg2
                 'user': settings.database.user,
                 'password': settings.database.password
             }
@@ -106,8 +116,8 @@ class EroskiIncidentRetriever(BaseRetriever):
             
         except Exception as e:
             logging.error(f"❌ Error configurando EroskiIncidentRetriever: {e}")
-            self.vectorizer = None
-            self.db_config = None
+            self._vectorizer = None
+            self._db_config = None
     
     def _get_relevant_documents(
         self, 
@@ -121,11 +131,11 @@ class EroskiIncidentRetriever(BaseRetriever):
         """
         try:
             # Generar embedding usando el mismo vectorizer que se usó para BD
-            if not self.vectorizer or not self.db_config:
+            if not self._vectorizer or not self._db_config:
                 return self._fallback_documents(query)
             
             # Usar get_vectorizer() para generar embedding de la query
-            query_embedding = self.vectorizer.embed_query(query)
+            query_embedding = self._vectorizer.embed(query)
             
             # Buscar similares en BD (versión síncrona para compatibility con BaseRetriever)
             similar_results = self._search_similar_sync(query_embedding, query, k=5)
@@ -138,8 +148,8 @@ class EroskiIncidentRetriever(BaseRetriever):
                 similarity = result['similarity']
                 
                 # Crear contenido del documento
-                if incident_type in self.incidents_data:
-                    incident_data = self.incidents_data[incident_type]
+                if incident_type in self._incidents_data:
+                    incident_data = self._incidents_data[incident_type]
                     
                     # Agregar problemas específicos si existen
                     problems_text = ""
@@ -165,7 +175,7 @@ Descripción: {result.get('descripcion', 'Sin descripción')}"""
                         'similarity': similarity,
                         'source': 'database_embeddings',
                         'description': result.get('descripcion', ''),
-                        'keywords': incident_data.get('keywords', []) if incident_type in self.incidents_data else []
+                        'keywords': incident_data.get('keywords', []) if incident_type in self._incidents_data else []
                     }
                 )
                 
@@ -186,44 +196,147 @@ Descripción: {result.get('descripcion', 'Sin descripción')}"""
             # Ejecutar versión async en bucle síncrono
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(self._search_similar_async(query_embedding, query_text, k))
-            finally:
-                loop.close()
         except Exception as e:
             logging.error(f"❌ Error en búsqueda síncrona: {e}")
             return []
     
-    async def _search_similar_async(self, query_embedding: List[float], query_text: str, k: int) -> List[Dict[str, Any]]:
-        """Búsqueda asíncrona en BD"""
-        import asyncpg
-        
+    
+    def _search_similar_sync(self, query_embedding: List[float], query_text: str, k: int = 5) -> List[Dict[str, Any]]:
+        """Búsqueda síncrona usando psycopg2"""
         try:
-            conn = await asyncpg.connect(**self.db_config)
+            # Conectar con psycopg2 (SIN LOOPS)
+            conn = psycopg2.connect(**self._db_config)
+            conn.autocommit = True
             
             try:
-                # OPCIÓN 1: Intentar con pgvector si está disponible
-                if await self._check_pgvector_available(conn):
-                    return await self._search_with_pgvector(conn, query_embedding, k)
-                
-                # OPCIÓN 2: Similitud calculada en Python
-                return await self._search_with_python_similarity(conn, query_embedding, k)
-                
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    if self._check_pgvector_available_sync(cur):
+                        return self._search_with_pgvector_sync(cur, query_embedding, k)
+                    return self._search_with_python_similarity_sync(cur, query_embedding, k)
             finally:
-                await conn.close()
+                conn.close()
                 
         except Exception as e:
-            logging.error(f"❌ Error en búsqueda async: {e}")
-            # Fallback final: búsqueda por texto
-            return await self._search_by_text_fallback(query_text, k)
-    
-    async def _check_pgvector_available(self, conn) -> bool:
-        """Verificar si pgvector está disponible"""
+            logging.error(f"❌ Error en búsqueda síncrona: {e}")
+            return self._search_by_text_fallback_sync(query_text, k)
+            
+        return []
+
+
+
+    def _check_pgvector_available_sync(self, cursor) -> bool:
+        """Verificar pgvector síncrono"""
         try:
-            await conn.fetchval("SELECT '[1,2,3]'::vector(3)")
+            cursor.execute("SELECT '[1,2,3]'::vector(3)")
             return True
         except:
             return False
+
+
+
+    def _search_with_pgvector_sync(self, cursor, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Búsqueda con pgvector síncrono"""
+        try:
+            embedding_str = f"[{','.join(map(str, query_embedding))}]"
+            
+            query = """
+            SELECT 
+                tv.tipo_incidencia,
+                ti.descripcion,
+                1 - (tv.embedding <=> %s::vector) as similarity
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            ORDER BY tv.embedding <=> %s::vector
+            LIMIT %s
+            """
+            
+            cursor.execute(query, (embedding_str, embedding_str, k))
+            rows = cursor.fetchall()
+            
+            return [{
+                'tipo_incidencia': row['tipo_incidencia'],
+                'descripcion': row['descripcion'],
+                'similarity': float(row['similarity'])
+            } for row in rows]
+            
+        except Exception as e:
+            logging.error(f"❌ Error con pgvector síncrono: {e}")
+            return []
+
+
+    def _search_with_python_similarity_sync(self, cursor, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Similitud calculada en Python síncrono"""
+        try:
+            query = """
+            SELECT tv.tipo_incidencia, tv.embedding, ti.descripcion
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            """
+            
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            
+            similarities = []
+            for row in rows:
+                db_embedding = self._parse_embedding_from_db(row['embedding'])
+                
+                if db_embedding:
+                    similarity = self._cosine_similarity(query_embedding, db_embedding)
+                    similarities.append({
+                        'tipo_incidencia': row['tipo_incidencia'],
+                        'descripcion': row['descripcion'],
+                        'similarity': similarity
+                    })
+            
+            similarities.sort(key=lambda x: x['similarity'], reverse=True)
+            return similarities[:k]
+            
+        except Exception as e:
+            logging.error(f"❌ Error en cálculo Python síncrono: {e}")
+            return []
+
+
+    def _search_by_text_fallback_sync(self, query_text: str, k: int) -> List[Dict[str, Any]]:
+        """Fallback por texto síncrono"""
+        try:
+            conn = psycopg2.connect(**self._db_config)
+            conn.autocommit = True
+            
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    query = """
+                    SELECT 
+                        tv.tipo_incidencia,
+                        ti.descripcion,
+                        CASE 
+                            WHEN tv.tipo_incidencia ILIKE %s THEN 0.9
+                            WHEN ti.descripcion ILIKE %s THEN 0.7
+                            ELSE 0.3
+                        END AS similarity
+                    FROM tipo_incidencia_vectorizado tv
+                    JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+                    WHERE tv.tipo_incidencia ILIKE %s OR ti.descripcion ILIKE %s
+                    ORDER BY similarity DESC
+                    LIMIT %s
+                    """
+                    
+                    search_pattern = f"%{query_text.lower()}%"
+                    cur.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern, k))
+                    rows = cur.fetchall()
+                    
+                    return [{
+                        'tipo_incidencia': row['tipo_incidencia'],
+                        'descripcion': row['descripcion'],
+                        'similarity': float(row['similarity'])
+                    } for row in rows]
+                    
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logging.error(f"❌ Error en fallback texto síncrono: {e}")
+            return []
+    
     
     async def _search_with_pgvector(self, conn, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
         """Búsqueda con pgvector"""
@@ -288,7 +401,7 @@ Descripción: {result.get('descripcion', 'Sin descripción')}"""
         import asyncpg
         
         try:
-            conn = await asyncpg.connect(**self.db_config)
+            conn = await asyncpg.connect(**self._db_config)
             
             try:
                 query = """
@@ -357,7 +470,7 @@ Descripción: {result.get('descripcion', 'Sin descripción')}"""
             query_lower = query.lower()
             fallback_docs = []
             
-            for incident_type, data in self.incidents_data.items():
+            for incident_type, data in self._incidents_data.items():
                 keywords = data.get('keywords', [])
                 if any(kw.lower() in query_lower for kw in keywords):
                     content = f"""Tipo: {incident_type}
@@ -389,7 +502,7 @@ class IdentifyIncidentTool:
     """Tool para identificar tipo de incidencia usando LLM y LangChain Retriever"""
     
     def __init__(self, incidents_data: Dict[str, Any], llm, retriever: EroskiIncidentRetriever):
-        self.incidents_data = incidents_data
+        self._incidents_data = incidents_data
         self.llm = llm
         self.retriever = retriever  # Usa BaseRetriever de LangChain
         self.parser = PydanticOutputParser(pydantic_object=IncidentIdentification)
@@ -561,7 +674,7 @@ class IdentificacionNode(BaseNode):
         
         # Cargar datos de incidencias
         self.incidents_data = self._load_incidents_data()
-        
+        print("👹Datos cargados👹")
         # Configurar sistema de recuperación semántica con LangChain Retriever
         self.semantic_retriever = EroskiIncidentRetriever(self.incidents_data)
         
@@ -587,15 +700,12 @@ class IdentificacionNode(BaseNode):
             # Buscar archivo en diferentes ubicaciones
             possible_paths = [
                 Path("data/eroski_incidents.json"),
-                Path("config/eroski_incidents.json"),
-                Path("scripts/eroski_incidents.json")
             ]
             
             for json_path in possible_paths:
                 if json_path.exists():
                     with open(json_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        
                         # Verificar estructura del JSON
                         if "incident_types" in data:
                             self.logger.info(f"✅ Cargados datos de incidencias desde {json_path}")
@@ -649,7 +759,7 @@ Final Answer: [respuesta final al usuario]
 CONVERSACIÓN ACTUAL:
 {chat_history}
 
-MENSAJE DEL USUARIO: {input}
+MENSAJE DEL USUARIO: {{input}}
 
 HISTORIAL DE PENSAMIENTOS:
 {agent_scratchpad}"""
@@ -657,8 +767,10 @@ HISTORIAL DE PENSAMIENTOS:
             # Crear prompt template
             react_prompt = PromptTemplate(
                 template=react_template,
-                input_variables=["tools", "chat_history", "input", "agent_scratchpad"],
-                partial_variables={"tools": "\n".join([f"{tool.name}: {tool.description}" for tool in tools])}
+                input_variables=[ "chat_history", "input", "agent_scratchpad"],
+                partial_variables={"tools": "\n".join([f"{tool.name}: {tool.description}" for tool in tools]),
+                                   "tool_names": ", ".join([tool.name for tool in tools])  # 👈 AÑADIR ESTO
+                                   }
             )
             
             # Crear agente React
@@ -740,7 +852,7 @@ Evidencia encontrada: {evidence}
 ¿Confirmas que el problema es con {incident_type}?"""
                         
                         return Command(update={
-                            "messages": messages + [AIMessage(content=response_text)],
+                            "messages": [AIMessage(content=response_text)],
                             "identification_started": True,
                             "pending_confirmation": True,
                             "pending_incident_type": incident_type,
@@ -875,12 +987,32 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                 user_messages_text=user_messages_text
             )
             
-            response = await asyncio.to_thread(self.llm.invoke, formatted_prompt)
+            class HistoricalAnalysis(BaseModel):
+                incident_found: bool = Field(description="Detecta si encontró el incidente")
+                incident_type: Optional[str] = Field(description="Typo de incidente encontrado")
+                confidence: Optional[float] = Field(description="float_entre_0_y_1")
+                evidence: Optional[str] = Field(description="texto_que_llevó_a_la_conclusión")
+                keywords_detected: Optional[List[str]] = Field(description="lista de keywords")
+                reasoning: Optional[str] = Field(description="explicación_del_análisis")
+                needs_more_info: bool = Field(description="Indica si necesita más información")
+
+            parser = JsonOutputParser(pydantic_object=HistoricalAnalysis)
+
+            llm_chain = historical_prompt | self.llm | parser
+
+            response = response = await asyncio.to_thread(llm_chain.invoke, {
+                "employee_name":employee_name,
+                "store_name":store_name,
+                "section":section,
+                "relevant_documents":docs_text,
+                "user_messages_text":user_messages_text
+            })
             
             # Parsear respuesta JSON
             try:
                 import json
-                result = json.loads(response.content.strip())
+                print(f"👹 Análisis histórico completado: {response}")
+                result = response
                 self.logger.info(f"✅ Análisis histórico completado: {result.get('incident_found', False)}")
                 return result
             except json.JSONDecodeError:
@@ -1213,9 +1345,26 @@ Por ejemplo:
 # FUNCIÓN FACTORY PARA EL NODO
 # =============================================================================
 
-def identificacion_node() -> IdentificacionNode:
-    """Factory function para crear el nodo de identificación"""
-    return IdentificacionNode()
+
+async def identificacion_node(state: EroskiState) -> Command:
+    """
+    Función wrapper para LangGraph - Nodo Identificador Incidencia
+    
+    Args:
+        state: Estado actual como EroskiState
+        
+    Returns:
+        Command con las actualizaciones de estado
+    """
+    # Crear instancia del nodo
+    node = IdentificacionNode()
+    # Ejecutar el nodo
+    return await node.execute(state)
+
+
+#def identificacion_node() -> IdentificacionNode:
+#    """Factory function para crear el nodo de identificación"""
+#    await IdentificacionNode()
 
 
 # =============================================================================

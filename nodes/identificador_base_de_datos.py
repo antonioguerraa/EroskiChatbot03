@@ -227,8 +227,6 @@ Eres un asistente especializado en identificar empleados de Eroski mediante bús
 HERRAMIENTAS DISPONIBLES:
 {tools}
 
-NOMBRES DE HERRAMIENTAS: {tool_names}
-
 🎯 MISIÓN:
 Identificar al usuario utilizando su email o número de empleado a partir de su mensaje.
 
