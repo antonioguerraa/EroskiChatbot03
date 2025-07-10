@@ -112,7 +112,7 @@ Responde solo con "modificar" o "continuar".
                 )
             return Command(update={
                 "messages":[AIMessage(content=resumen)],
-                    "current_node": "recoger_datos",
+                    "current_node": "identificar_incidencia",
                     "authenticated": False,
                     'awaiting_user_input': True
                 })
@@ -129,7 +129,7 @@ Responde solo con "modificar" o "continuar".
                 )
                 return Command(update={
                     "messages":[AIMessage(content=resumen)],
-                    "current_node": "recoger_datos",
+                    "current_node": "identificar_incidencia",
                     "authenticated": False,
                     'awaiting_user_input': True
                 })
@@ -143,7 +143,7 @@ Responde solo con "modificar" o "continuar".
                 pregunta = "¿Podrías decirme " + " y ".join(faltan) + "?"
                 return Command(update={
                     "messages":[AIMessage(content=pregunta)],
-                    "current_node": "recoger_datos",
+                    "current_node": "identificar_incidencia",
                     "authenticated": False,
                     'awaiting_user_input': True
                 })
@@ -154,7 +154,7 @@ Responde solo con "modificar" o "continuar".
             pregunta = "No he entendido si quieres modificar tus datos o continuar. ¿Podrías aclararlo?"
             return Command(update={
                     "messages":[AIMessage(content=pregunta)],
-                    "current_node": "recoger_datos",
+                    "current_node": "identificar_incidencia",
                     "authenticated": False,
                     'awaiting_user_input': True
 
@@ -178,7 +178,7 @@ Responde solo con "modificar" o "continuar".
 
     def _respuesta_ai(self, texto: str) -> Command:
         return Command(update={"messages": [AIMessage(content=texto)],
-                    "current_node": "recoger_datos",
+                    "current_node": "identificar_incidencia",
                     "authenticated": False,
                     'awaiting_user_input': True})
 

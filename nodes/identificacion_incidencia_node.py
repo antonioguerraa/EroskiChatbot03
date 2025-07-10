@@ -821,10 +821,10 @@ HISTORIAL DE PENSAMIENTOS:
             if not state.get("authenticated"):
                 self.logger.warning("⚠️ Usuario no autenticado")
                 return Command(update={
-                    "messages": state["messages"] + [
+                    "messages":  [
                         AIMessage(content="Necesitas estar autenticado para reportar incidencias.")
                     ],
-                    "current_node": "authenticate",
+                    "current_node": "identificar_incidencia",
                     "awaiting_user_input": True
                 })
             
@@ -834,7 +834,11 @@ HISTORIAL DE PENSAMIENTOS:
             last_message, all_user_messages = self._extract_user_messages(messages)
             # Procesar confirmación pendiente
             if state.get("pending_confirmation"):
+                last_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
                 return await self._handle_confirmation(state, last_message)
+
+
+
             # Si es la primera vez en este nodo, analizar historial ANTES de mostrar ejemplos
             print(f"👹 identification_starter: {state.get('identification_started')}")
             if not state.get("identification_started"):
@@ -861,7 +865,7 @@ Evidencia encontrada: {evidence}
                             "pending_incident_type": incident_type,
                             "identification_confidence": historical_analysis["confidence"],
                             "identification_source": "historical_analysis",
-                            "current_node": "identificacion",
+                            "current_node": "identificar_incidencia",
                             "awaiting_user_input": True
                         })
                 
@@ -883,7 +887,7 @@ Por favor, describe el problema que estás experimentando o menciona qué equipo
                 return Command(update={
                     "messages": messages + [AIMessage(content=response_text)],
                     "identification_started": True,
-                    "current_node": "identificacion",
+                    "current_node": "identificar_incidencia",
                     "awaiting_user_input": True
                 })
             
@@ -899,9 +903,10 @@ Por favor, describe el problema que estás experimentando o menciona qué equipo
         except Exception as e:
             self.logger.error(f"❌ Error en execute: {e}")
             return Command(update={
-                "messages": messages + [
+                "messages": [
                     AIMessage(content="Disculpa, ha ocurrido un error. ¿Puedes describir tu problema de nuevo?")
                 ],
+                "current_node": "identificar_incidencia",
                 "error_count": state.get("error_count", 0) + 1,
                 "awaiting_user_input": True
             })
@@ -1065,20 +1070,23 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
         except Exception as e:
             self.logger.error(f"❌ Error en fallback histórico: {e}")
             return {"incident_found": False, "confidence": 0.0}
-    
+
     async def _handle_confirmation(self, state: EroskiState, last_message: str) -> Command:
-        """Manejar confirmación de tipo de incidencia"""
+        """
+        Manejar confirmación de tipo de incidencia con soporte para confirmación implícita
+        """
         try:
             if not self.confirmation_tool or not last_message:
                 # Sin tool de confirmación, asumir "sí" si es positivo
                 confirmation = "si" if any(word in last_message.lower() 
-                                         for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
+                                        for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
             else:
-                print(f"👹 detecta confirmation tool")
-                confirmation = self.confirmation_tool.check_raw(last_message)
-                print(f"👹 confirmation tool: {confirmation}")
+                # NUEVO: Usar la versión mejorada con estado para confirmación implícita
+                messages = state.get("messages", [])
+                confirmation = self.confirmation_tool.check_with_history(last_message, messages)
+                
+                self.logger.info(f"🔍 Confirmación analizada: '{last_message}' -> '{confirmation}'")
 
-            
             incident_type = state.get("pending_incident_type")
             
             if confirmation == "si":
@@ -1091,7 +1099,7 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                     "incident_type_confirmed": True,
                     "pending_confirmation": False,
                     "pending_incident_type": None,
-                    "current_node": "collect_incident_details",  # Siguiente nodo
+                    "current_node": "identificar_incidencia",  # Siguiente nodo
                     "awaiting_user_input": True
                 })
             
@@ -1100,31 +1108,33 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                 response_text = "Entendido, no es ese tipo de problema. Por favor, describe con más detalle qué equipo o sistema está fallando."
                 
                 return Command(update={
-                    "messages": state["messages"] + [AIMessage(content=response_text)],
+                    "messages": [AIMessage(content=response_text)],
                     "pending_confirmation": False,
                     "pending_incident_type": None,
+                    "identification_started": True,
+                    "current_node": "identificar_incidencia",
                     "awaiting_user_input": True
                 })
             
             else:
-                # Respuesta ambigua - pedir clarificación
-                incident_type = state.get("pending_incident_type", "problema")
-                response_text = f"No estoy seguro de tu respuesta. ¿Confirmas que el problema es con **{incident_type}**? Por favor responde 'sí' o 'no'."
+                # Respuesta ambigua - solicitar clarificación
+                response_text = f"No estoy seguro de tu respuesta. ¿Confirmas que el problema es con **{incident_type}**? Por favor responde 'sí' o 'no', o describe más detalles del problema."
                 
                 return Command(update={
-                    "messages": state["messages"] + [AIMessage(content=response_text)],
+                    "messages": [AIMessage(content=response_text)],
+                    "current_node": "identificar_incidencia",
                     "awaiting_user_input": True
                 })
                 
         except Exception as e:
             self.logger.error(f"❌ Error en confirmación: {e}")
             return Command(update={
-                "messages": state["messages"] + [
-                    AIMessage(content="Ha ocurrido un error. ¿Puedes confirmar de nuevo el tipo de problema?")
-                ],
-                "error_count": state.get("error_count", 0) + 1,
+                "messages": [AIMessage(content="Error al procesar la confirmación. ¿Puedes intentar de nuevo?")],
+                "pending_confirmation": False,
+                "current_node": "identificar_incidencia",
                 "awaiting_user_input": True
-            })
+            })   
+
     
     async def _process_with_agent_and_history(self, state: EroskiState, last_message: str, 
                                             all_user_messages: List[str], messages: List) -> Command:
