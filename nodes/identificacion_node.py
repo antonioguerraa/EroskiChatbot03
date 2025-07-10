@@ -43,6 +43,7 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from pydantic import BaseModel, Field
 from pydantic import PrivateAttr
 from langchain_core.output_parsers import JsonOutputParser
+from nodes.tools.confirmation_tool import add_confirmation_tool_to_node
 
 # LangGraph imports
 from langgraph.types import Command
@@ -1080,7 +1081,10 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                 confirmation = "si" if any(word in last_message.lower() 
                                          for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
             else:
+                print(f"👹 detecta confirmation tool")
                 confirmation = self.confirmation_tool.check_raw(last_message)
+                print(f"👹 confirmation tool: {confirmation}")
+
             
             incident_type = state.get("pending_incident_type")
             
