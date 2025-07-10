@@ -539,13 +539,16 @@ class BuscarSolucionNode:
             2. Revisar manual de operación en página 15 (Manual)
             3. Si persiste, contactar soporte técnico (Otros)
 
+            CRÍTICO: Cuando proporciones una solución, SIEMPRE termina preguntando:
+            "¿Esta solución resuelve tu problema?"
+                                                      
             Formato de respuesta:
             Thought: [tu razonamiento]
             Action: [herramienta a usar]
             Action Input: [entrada para la herramienta]
             Observation: [resultado de la herramienta]
             ... (repite si es necesario)
-            Final Answer: [respuesta final para el usuario]
+            Final Answer: [respuesta final para el usuario CON ETIQUETAS DE FUENTE Y PREGUNTA DE CONFIRMACIÓN]
 
             Pregunta: {input}
             Contexto actual: {agent_scratchpad}
@@ -760,6 +763,9 @@ class BuscarSolucionNode:
             Command: Comando con las actualizaciones del estado
         """
         print(f"👹Entrada en el nodo {self.__class__.__name__}👹")
+        print(f"👹confirmación incidente {state.get('incident_type_confirmed')}👹")
+        print(f"👹pending_confirmation {state.get('pending_confirmation')}👹")
+        print(f"👹awaiting_user_input {state.get('awaiting_user_input')}👹")
         try:
             # Preparar actualización base del estado
             base_update = {
@@ -815,8 +821,29 @@ class BuscarSolucionNode:
                     # Extraer información del agente
                     problem_identified = False
                     response_update = {}
-                    
-                    if "identify_problem" in str(agent_response.get("intermediate_steps", [])):
+                    if "Esta solución resuelve tu problema" in agent_response.get("output"):
+                        print(f"👹👹👹 agent_response: {agent_response}👹👹👹")
+                        response_update = {
+                                    "problem_description": last_message,
+                                    "solution_content": agent_response.get("output"),
+                                    "solution_found": True,
+                                    "awaiting_user_input": True,
+                                    "messages": state.get("messages", []) + [AIMessage(content=agent_response.get("output"))]
+                        }
+                        problem_identified = True
+                    elif "No se pudo identificar el problema" in agent_response.get("output"):
+                        response_update = {
+                                    "problem_description": last_message,
+                                    "solution_found": False,
+                                    "pending_confirmation": True,
+                                    "awaiting_user_input": True,
+                                    "messages": state.get(
+                                        [AIMessage(content={agent_response.get("output")})]
+                                        )
+                        }
+
+
+                    elif "identify_problem" in str(agent_response.get("intermediate_steps", [])):
                         # Buscar resultado JSON en los pasos intermedios
                         for step in agent_response.get("intermediate_steps", []):
                             if hasattr(step, '__len__') and len(step) >= 2:
@@ -886,7 +913,7 @@ class BuscarSolucionNode:
                         # Usar respuesta final del agente si no se procesó resultado específico
                         response = agent_response.get("output", "No pude procesar tu consulta. ¿Podrías reformular el problema?")
                         response_update = {
-                            "messages": state.get("messages", []) + [AIMessage(content=response)],
+                            "messages": [AIMessage(content=response)],
                             "awaiting_user_input": True
                         }
                     

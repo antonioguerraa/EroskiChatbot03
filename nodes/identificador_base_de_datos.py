@@ -41,6 +41,7 @@ from config.settings import get_settings
 try:
     from nodes.tools.confirmation_tool import add_confirmation_tool_to_node
     CONFIRMATION_AVAILABLE = True
+    print("👹 esta disponible el confirmation tool  ")
 except ImportError:
     CONFIRMATION_AVAILABLE = False
     add_confirmation_tool_to_node = lambda cls: cls  # Decorador vacío si no está disponible
@@ -221,11 +222,18 @@ class IdentificadorBaseDatosNode(BaseNode):
     def _create_react_agent(self) -> AgentExecutor:
         """Crear agente React con las tools de búsqueda"""
         
-        prompt = PromptTemplate.from_template("""
+        prompt = PromptTemplate(
+            input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
+            template=
+            """
 Eres un asistente especializado en identificar empleados de Eroski mediante búsqueda en base de datos.
 
 HERRAMIENTAS DISPONIBLES:
 {tools}
+
+NOMBRES DE LAS HERRAMIENTAS:
+{tool_names}
+
 
 🎯 MISIÓN:
 Identificar al usuario utilizando su email o número de empleado a partir de su mensaje.
@@ -298,6 +306,7 @@ MENSAJE DEL USUARIO:
         email_tried = state.get("email_authen_tried", False)
         employee_id_tried = state.get("employee_id_authent_tried", False)
         
+        logging.info(f"👹 JGL email_tried:{email_tried}, employee_id_tried:{employee_id_tried}")
         # Si ambos métodos ya fueron intentados sin éxito
         if email_tried and employee_id_tried and not state.get("authenticated", False):
             return self._handle_identification_failed(state)

@@ -15,7 +15,6 @@ class ConfirmationTool:
     def __init__(self):
         self.chain = self._build_chain()
 
-
     def _build_chain(self):
 
         """
@@ -68,7 +67,6 @@ INSTRUCCIONES:
         
         return prompt | llm
 
-
     def check_raw(self, user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
         """
         Lógica central de confirmación, usable directamente desde código Python.
@@ -90,7 +88,6 @@ INSTRUCCIONES:
             logger.error(f"Error en check_raw: {e}")
             return "no se"
 
-
     @tool
     @staticmethod
     def check_confirmation(user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
@@ -100,7 +97,6 @@ INSTRUCCIONES:
         Internamente llama a check_raw().
         """
         return ConfirmationTool().check_raw(user_message)
-
 
     def get_tool(self):
         """

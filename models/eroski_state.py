@@ -202,14 +202,14 @@ def create_initial_eroski_state(
         # Identificación
         session_id=session_id,
         authenticated=False,
-        email_authen_tried = True,
-        employee_id_authent_tried = True,
+        email_authen_tried = False,
+        employee_id_authent_tried =False,
+        incident_type_confirmed = False,
         
         # Conversación
         messages=[],
         
         # Control de flujo
-        current_node="authenticate",
         attempts=0,
         max_attempts=3,
         can_retry=True,

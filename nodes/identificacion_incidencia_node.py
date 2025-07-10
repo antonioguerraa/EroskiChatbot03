@@ -817,7 +817,6 @@ HISTORIAL DE PENSAMIENTOS:
         """Ejecutar lógica principal del nodo de identificación"""
         try:
             self.logger.info("🔍 Iniciando identificación de incidencia")
-            print(f"👹check 1")
             # Verificar autenticación
             if not state.get("authenticated"):
                 self.logger.warning("⚠️ Usuario no autenticado")
@@ -829,16 +828,13 @@ HISTORIAL DE PENSAMIENTOS:
                     "awaiting_user_input": True
                 })
             
-            print(f"👹check 2")
             messages = state.get("messages", [])
             
             # Obtener último mensaje del usuario Y analizar historial completo
             last_message, all_user_messages = self._extract_user_messages(messages)
-            print(f"👹check 4")
             # Procesar confirmación pendiente
             if state.get("pending_confirmation"):
                 return await self._handle_confirmation(state, last_message)
-            print(f"👹check 3")
             # Si es la primera vez en este nodo, analizar historial ANTES de mostrar ejemplos
             print(f"👹 identification_starter: {state.get('identification_started')}")
             if not state.get("identification_started"):
@@ -874,7 +870,7 @@ Evidencia encontrada: {evidence}
                 
                 # Personalizar mensaje según historial
                 if all_user_messages:
-                    intro_text = "He revisado nuestro historial pero necesito más información específica sobre el problema técnico."
+                    intro_text = "Cuéntame más sobre la incidencia"
                 else:
                     intro_text = "¡Hola! Voy a ayudarte a identificar el tipo de incidencia técnica."
                 

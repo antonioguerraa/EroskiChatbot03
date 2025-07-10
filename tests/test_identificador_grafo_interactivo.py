@@ -19,7 +19,7 @@ from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_manual import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
-from nodes.identificacion_node import identificacion_node
+from nodes.identificacion_incidencia_node import identificacion_node
 from nodes.buscar_solucion_node import buscar_solucion_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
@@ -39,55 +39,97 @@ class InteractiveGrafoTester:
         builder = StateGraph(EroskiState)
         builder.add_node("orquestador", identificador_orquestador_node)
         builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
-        builder.add_node("recoger_datos", recoger_datos_empleado_node)
-        builder.add_node("clasificador", classify_node)
-        builder.add_node("tipo_incidencia", identificacion_node)
-        builder.add_node("buscar_solucion_node", buscar_solucion_node)
-
+        builder.add_node("identificador_manual", recoger_datos_empleado_node)
+        builder.add_node("identificar_incidencia", identificacion_node)
+        builder.add_node("buscar_solucion", buscar_solucion_node)
+        
+        builder.set_entry_point("orquestador")
 
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
-            campos = ["solution_found", 
-                      "incident_type",
-                      "incident_type_confirmed",
-                      "escalation_needed:", 
-                      "awaiting_user_input", 
-                      "resolved", 
-                      "automated_resolution",
-                      "incident_id",
-                      "awaiting_user_input",
-                      "current_node",
-                      "identification_source",
-                      "pending_confirmation" 
+            campos = [  "authenticated",
+                        "email_authen_tried",
+                        "employee_id_authent_tried",
+                        "solution_found", 
+                        "incident_type",
+                        "incident_type_confirmed",
+                        "escalation_needed:", 
+                        "awaiting_user_input", 
+                        "resolved", 
+                        "automated_resolution",
+                        "incident_id",
+                        "awaiting_user_input",
+                        "current_node",
+                        "identification_source",
+                        "pending_confirmation"
                       ]
             for campo in campos:
                 print(f"🎛️ {campo}: {state.get(campo)}")
-            ok = True
-            if ok:
-                return "buscar_solucion_node"
-            if state.get("authenticated"):
-                return "clasificador"
-            if state.get("awaiting_user_input") and state.get("current_node") == "recoger_datos":
-                return END
-            if state.get("email_authen_tried", False) and state.get("employee_id_authent_tried", False):
-                return "recoger_datos"
-            return "identificador_base_de_datos"
 
-        builder.set_entry_point("orquestador")
+            if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
+                logging.info("👹 Entra en identificador base de datos")
+                return "identificador_base_de_datos"
+            if not state.get("authenticated"):
+                logging.info("👹 Entra en recoger_datos")
+                return "identificador_manual"
+            if not state.get("incident_type_confirmed"):
+                logging.info("👹 Entra en identificar tipo incidencia")
+                return "identificar_incidencia"
+            logging.info("👹 Entra en buscar solución")
+            return "buscar_solucion"
+
+        def ruta_post_identificacion_db(state: EroskiState) -> str:
+            if state.get("authenticated"):
+                return "identificar_incidencia"
+            else:
+                return END
+
+        builder.add_conditional_edges(
+            "identificador_base_de_datos",
+            ruta_post_identificacion_db,
+            {
+                "identificar_incidencia": "identificar_incidencia",
+                END: END
+            }
+        )
+
+        def ruta_post_identificacion_manual(state: EroskiState) -> str:
+            return "identificar_incidencia" if state.get("authenticated") else END
+
+        builder.add_conditional_edges(
+            "identificador_manual",
+            ruta_post_identificacion_manual,
+            {
+                "identificar_incidencia": "identificar_incidencia",
+                END: END
+            }
+        )
+
+
+        def ruta_post_identificar_incidencia(state: EroskiState) -> str:
+            return "buscar_solucion" if state.get("incident_type_confirmed") else END
+
+        builder.add_conditional_edges(
+            "identificar_incidencia",
+            ruta_post_identificar_incidencia,
+            {
+                "buscar_solucion": "buscar_solucion",
+                END: END
+            }
+        )
+
+        builder.add_edge("buscar_solucion", END)
+
+        
+        
         builder.add_conditional_edges("orquestador", route, {
             "identificador_base_de_datos": "identificador_base_de_datos",
-            "recoger_datos": "recoger_datos",
-            "clasificador": "clasificador",
-            "tipo_incidencia": "tipo_incidencia",
-            "buscar_solucion_node": "buscar_solucion_node",
+            "identificador_manual": "identificador_manual",
+            "identificar_incidencia": "identificar_incidencia",
+            "buscar_solucion": "buscar_solucion",
             END: END
         })
-        builder.add_edge("recoger_datos", END)
-        builder.add_edge("clasificador", END)
-        builder.add_edge("tipo_incidencia", END)
-        builder.add_edge("buscar_solucion_node", END)
-        builder.add_edge("tipo_incidencia", "buscar_solucion_node")
 
         return builder.compile()
 
@@ -137,6 +179,5 @@ async def main():
     await tester.run()
 
 if __name__ == "__main__":
-
     
     asyncio.run(main())

@@ -13,10 +13,10 @@ from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 #from nodes.identificacion_manual import identificacion_manual_node
 from nodes.identificador_manual import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
-from nodes.identificacion_node import identificacion_node
+from nodes.identificacion_incidencia_node import identificacion_node
 from nodes.buscar_solucion_node import buscar_solucion_node
 from langchain_core.messages import AIMessage
-
+import logging
 
 class IdentificadorOrquestadorNode:
     """
@@ -29,15 +29,6 @@ class IdentificadorOrquestadorNode:
 
     async def execute(self, state: EroskiState) -> Command:
         # Si el usuario ya está autenticado, no repetir
-        ok = True
-        if ok:
-            return Command(update={
-                "current_node": self.node_name,
-                "authenticated":True,
-                "incident_type_confirmed": True,
-                "last_activity": datetime.now(),
-                "incident_type": "balanza"
-            })
         if state.get("authenticated", False):
             return Command(update={
                 "current_node": self.node_name,
@@ -61,6 +52,7 @@ class IdentificadorOrquestadorNode:
 
 # Wrapper para LangGraph
 async def identificador_orquestador_node(state: EroskiState) -> Command:
+    logging.info(f"👹 Entra en el Orquestador")
     node = IdentificadorOrquestadorNode()
     return await node.execute(state)
 
