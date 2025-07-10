@@ -213,21 +213,29 @@ class TwoPhaseClassifier:
         Returns:
             Command con estado actualizado
         """
+
+
+        #Hay que interpretar el mensaje del usuario.
+
         
         # ✅ FASE 1: Identificar TIPO de incidencia
+        print(f"\n👹 Entra en fase 1\nstate[incident_type]: {state.get('incident_type')}\n")
+        
         if not state.get("incident_type"):
+            
             self.logger.info("🔍 FASE 1: Identificando tipo de incidencia...")
             
             phase1_result = await self._execute_phase_1(state)
 
-            print(f"👹Resultados de FASE 1: {phase1_result}")
+            print(f"\n\n👹Resultados de FASE 1: {phase1_result}")
+            print(f"👹phase1_result.incident_type_identified: {phase1_result.incident_type_identified}\n\n")
             
             # Actualizar estado con resultados de FASE 1
             
             if phase1_result.incident_type_identified and phase1_result.confidence_level >= 0.7:
                 # Actualizar estado con tipo identificado
                 updated_state = self._update_state_after_phase1(state, phase1_result)
-                
+                print(f"\n\n👹updated_state: {updated_state}\n\n")
                 self.logger.info(f"✅ FASE 1 COMPLETADA: {phase1_result.incident_type} (confianza: {phase1_result.confidence_level})")
                 
                 # Continuar inmediatamente a FASE 2
@@ -278,10 +286,12 @@ class TwoPhaseClassifier:
         """Ejecutar FASE 2 con validación mejorada"""
         
         try:
-            print(f"🌄Entramos en la fase 2")
+            print(f"\n🌄Entramos en la fase 2\n")
             # Ejecutar Fase 2
             phase2_result = await self._execute_phase_2(state)
             
+            print(f"\n🌄Fase 2 result: {phase2_result}\n")
+
             # ✅ VALIDACIÓN ADICIONAL: Verificar que problem_description no sea None
             if phase2_result.problem_description is None:
                 self.logger.warning("⚠️ problem_description es None, aplicando fallback")
@@ -355,7 +365,6 @@ class TwoPhaseClassifier:
                 next_action="escalate"
             )
         
-        auth_data = state.get("auth_data_collected", {})
         
         # Preparar datos para el prompt de FASE 2
         prompt_data = {
@@ -612,7 +621,7 @@ class TwoPhaseClassifier:
     def _provide_solution(self, state: EroskiState, phase2_result: SpecificProblemDecision) -> Command:
         """Proporcionar solución identificada y actualizar persistencia completa"""
         
-        incident_code = state.get("incident_code", "N/A")
+        incident_code = state.get("incident_id", "N/A")
         
         solution_message = f"""✅ **Problema identificado: {state.get('incident_type', '').title()}**
 
@@ -621,10 +630,7 @@ class TwoPhaseClassifier:
     🔧 **Solución paso a paso:**
     {phase2_result.proposed_solution}
 
-    🤔 **¿Quieres intentar esta solución?**
-    - Responde **'sí'** para que te guíe paso a paso
-    - Responde **'no entiendo'** si necesitas más explicación
-    - Responde **'ya lo intenté'** si ya probaste esto
+    🤔 **Dime si resuelve esto la incidencia**
 
     📋 *Código de incidencia: {incident_code}*"""
 
@@ -688,7 +694,7 @@ class TwoPhaseClassifier:
         return Command(
             update={
                 **state,
-                "messages": state["messages"] + [AIMessage(content=solution_message)],
+                "messages": [AIMessage(content=solution_message)],
                 "current_step": "verify_solution",
                 "awaiting_user_input": True,
                 "solution_provided": True
@@ -765,7 +771,10 @@ He identificado que el problema es con **{incident_type}**. Para darte la soluci
         
         return Command(
             update={
-                "messages": state["messages"] + [AIMessage(content=message)],
+                **state,
+                "incident_type": incident_type,
+                "problem_description": phase2_result.problem_description,
+                "messages": [AIMessage(content=message)],
                 "current_step": "collect_details",
                 "awaiting_user_input": True
             }

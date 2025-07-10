@@ -187,7 +187,6 @@ class IncidentConfigLoader:
             if not config_file.exists():
                 logger.warning(f"⚠️ Archivo no encontrado: {config_path}")
                 return False
-            
             # Verificar si el archivo cambió
             current_mtime = config_file.stat().st_mtime
             if (config_path in self.file_mtimes and 

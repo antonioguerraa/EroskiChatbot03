@@ -121,8 +121,8 @@ class EroskiState(TypedDict, total=False):
     solution_content: Optional[str]        # Contenido de la solución
     resolution_steps: Optional[List[str]]  # Pasos para resolver
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
-
-    
+    solucion_catalogo: bool                # dice si la solución se encontró en el catálogo
+    consultar_manual: bool                 # Si debe consultar el manual
     # ========== ESCALACIÓN ==========
     escalation_needed: bool                # Si requiere escalación
     escalation_reason: Optional[str]       # Motivo de escalación

@@ -740,5 +740,273 @@
     "solucion_aplicada": null,
     "estado_solucion": null,
     "mensajes": []
+  },
+  "ER-2283": {
+    "codigo_incidencia": "ER-2283",
+    "timestamp_creacion": "2025-07-09T14:33:58.791881",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-6649": {
+    "codigo_incidencia": "ER-6649",
+    "timestamp_creacion": "2025-07-09T14:36:53.916538",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-6417": {
+    "codigo_incidencia": "ER-6417",
+    "timestamp_creacion": "2025-07-09T14:37:34.259467",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-5170": {
+    "codigo_incidencia": "ER-5170",
+    "timestamp_creacion": "2025-07-09T14:37:57.726974",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-6168": {
+    "codigo_incidencia": "ER-6168",
+    "timestamp_creacion": "2025-07-09T15:16:59.426061",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-1347": {
+    "codigo_incidencia": "ER-1347",
+    "timestamp_creacion": "2025-07-09T15:41:56.581231",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-1840": {
+    "codigo_incidencia": "ER-1840",
+    "timestamp_creacion": "2025-07-09T15:44:00.579462",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-7372": {
+    "codigo_incidencia": "ER-7372",
+    "timestamp_creacion": "2025-07-09T15:47:12.941993",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-9606": {
+    "codigo_incidencia": "ER-9606",
+    "timestamp_creacion": "2025-07-09T15:47:47.141158",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-3628": {
+    "codigo_incidencia": "ER-3628",
+    "timestamp_creacion": "2025-07-09T15:50:39.936478",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-2509": {
+    "codigo_incidencia": "ER-2509",
+    "timestamp_creacion": "2025-07-09T15:55:34.726192",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-5247": {
+    "codigo_incidencia": "ER-5247",
+    "timestamp_creacion": "2025-07-09T16:02:40.907931",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": "balanza",
+    "problema_especifico": "La Balanza no imprime las Etiquetas",
+    "solucion_aplicada": "Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza",
+    "estado_solucion": "propuesta",
+    "mensajes": [
+      {
+        "tipo": "usuario",
+        "contenido": "problema con la balanza",
+        "timestamp": "2025-07-09T16:03:20.146382"
+      },
+      {
+        "tipo": "bot",
+        "contenido": "🔍 **Problema con Balanza - ¿Cuál es tu caso específico?**\n\nHe identificado que el problema es con **balanza**. Para darte la solución exacta, ¿cuál de estos describe mejor tu situación?\n\n**La Balanza no imprime las Etiquetas**  \n            Solución: Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza\n\n**La Balanza no se enciende**  \n            Solución: Comprobar si el enchufe de Red esta conectado\n\n**El precio que imprime en la etiqueta no es correcto**  \n            Solución: Ir a la aplicación de Gisae a informarte del precio de ese producto y registrarlo en la Balanza\n\n💡 Estos son solo algunos ejemplos comunes con el equipo **balanza**. ¿Podrías describirme tu problema concreto?\n\n📝 **O describe tu problema con más detalle si no coincide con ninguno de estos.**",
+        "timestamp": "2025-07-09T16:03:20.146382"
+      },
+      {
+        "tipo": "usuario",
+        "contenido": "la Balanza no imprime",
+        "timestamp": "2025-07-09T16:03:20.146382"
+      },
+      {
+        "tipo": "bot",
+        "contenido": "✅ **Problema identificado: Balanza**\n\n    📋 **Problema específico:** La Balanza no imprime las Etiquetas\n\n    🔧 **Solución paso a paso:**\n    Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza\n\n    🤔 **¿Quieres intentar esta solución?**\n    - Responde **'sí'** para que te guíe paso a paso\n    - Responde **'no entiendo'** si necesitas más explicación\n    - Responde **'ya lo intenté'** si ya probaste esto\n\n    📋 *Código de incidencia: ER-5247*",
+        "timestamp": "2025-07-09T16:03:20.146382"
+      }
+    ],
+    "timestamp_actualizacion": "2025-07-09T16:03:20.146382"
+  },
+  "ER-7801": {
+    "codigo_incidencia": "ER-7801",
+    "timestamp_creacion": "2025-07-09T16:03:44.037583",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": "balanza",
+    "problema_especifico": "La Balanza no imprime las Etiquetas",
+    "solucion_aplicada": "Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza",
+    "estado_solucion": "propuesta",
+    "mensajes": [
+      {
+        "tipo": "usuario",
+        "contenido": "la Balanza no imprime",
+        "timestamp": "2025-07-09T16:03:58.819234"
+      },
+      {
+        "tipo": "bot",
+        "contenido": "✅ **Problema identificado: Balanza**\n\n    📋 **Problema específico:** La Balanza no imprime las Etiquetas\n\n    🔧 **Solución paso a paso:**\n    Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza\n\n    🤔 **¿Quieres intentar esta solución?**\n    - Responde **'sí'** para que te guíe paso a paso\n    - Responde **'no entiendo'** si necesitas más explicación\n    - Responde **'ya lo intenté'** si ya probaste esto\n\n    📋 *Código de incidencia: ER-7801*",
+        "timestamp": "2025-07-09T16:03:58.819234"
+      },
+      {
+        "tipo": "usuario",
+        "contenido": "la Balanza no imprime",
+        "timestamp": "2025-07-09T16:03:58.819234"
+      },
+      {
+        "tipo": "bot",
+        "contenido": "✅ **Problema identificado: Balanza**\n\n    📋 **Problema específico:** La Balanza no imprime las Etiquetas\n\n    🔧 **Solución paso a paso:**\n    Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza\n\n    🤔 **¿Quieres intentar esta solución?**\n    - Responde **'sí'** para que te guíe paso a paso\n    - Responde **'no entiendo'** si necesitas más explicación\n    - Responde **'ya lo intenté'** si ya probaste esto\n\n    📋 *Código de incidencia: ER-7801*",
+        "timestamp": "2025-07-09T16:03:58.819234"
+      }
+    ],
+    "timestamp_actualizacion": "2025-07-09T16:03:58.819234"
+  },
+  "ER-9091": {
+    "codigo_incidencia": "ER-9091",
+    "timestamp_creacion": "2025-07-09T16:23:20.468682",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-7520": {
+    "codigo_incidencia": "ER-7520",
+    "timestamp_creacion": "2025-07-09T16:39:34.821077",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
+  },
+  "ER-9930": {
+    "codigo_incidencia": "ER-9930",
+    "timestamp_creacion": "2025-07-09T16:43:43.744065",
+    "estado": "abierta",
+    "nombre_empleado": "",
+    "email_empleado": "",
+    "nombre_tienda": "",
+    "seccion": "",
+    "tipo_incidencia": null,
+    "problema_especifico": null,
+    "solucion_aplicada": null,
+    "estado_solucion": null,
+    "mensajes": []
   }
 }

@@ -19,6 +19,7 @@ from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_manual import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
+from nodes.identificacion_node import identificacion_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
 import logging
@@ -39,17 +40,23 @@ class InteractiveGrafoTester:
         builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
         builder.add_node("recoger_datos", recoger_datos_empleado_node)
         builder.add_node("clasificador", classify_node)
+        builder.add_node("tipo_incidencia", identificacion_node)
 
 
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
-            #campos = ["modificaciones_pendientes", "employee_name", "employee_lastname", "incident_store_name", "incident_department"]
-            for key, value in state.items():
-                print(f"🎛️ {key}: {value}")
+            campos = ["solution_found", 
+                      "escalation_needed:", 
+                      "awaiting_user_input", 
+                      "resolved", 
+                      "automated_resolution",
+                      "incident_id"]
+            for campo in campos:
+                print(f"🎛️ {campo}: {state.get(campo)}")
             ok = True
             if ok:
-                return "clasificador"
+                return "tipo_incidencia"
             if state.get("authenticated"):
                 return "clasificador"
             if state.get("awaiting_user_input") and state.get("current_node") == "recoger_datos":
@@ -63,10 +70,12 @@ class InteractiveGrafoTester:
             "identificador_base_de_datos": "identificador_base_de_datos",
             "recoger_datos": "recoger_datos",
             "clasificador": "clasificador",
+            "tipo_incidencia": "tipo_incidencia",
             END: END
         })
         builder.add_edge("recoger_datos", END)
         builder.add_edge("clasificador", END)
+        builder.add_edge("tipo_incidencia", END)
 
         return builder.compile()
 

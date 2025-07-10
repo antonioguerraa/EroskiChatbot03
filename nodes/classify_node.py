@@ -54,7 +54,9 @@ class LLMDrivenClassifyNode(BaseNode):
     def _initialize_incident_if_needed(self, state: EroskiState) -> EroskiState:
         if not state.get("incident_id"):
             code = self.code_manager.generate_unique_code()
+            print(f"👹code generado: {code}")
             new_state = {**state, "incident_id": code}
+
             self.persistence_manager.initialize_incident(new_state, code)
             return new_state
         return state

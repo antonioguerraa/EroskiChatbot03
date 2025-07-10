@@ -13,6 +13,7 @@ from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 #from nodes.identificacion_manual import identificacion_manual_node
 from nodes.identificador_manual import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
+from nodes.identificacion_node import identificacion_node
 from langchain_core.messages import AIMessage
 
 
