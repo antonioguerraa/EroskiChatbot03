@@ -177,13 +177,13 @@ class EroskiKnowledgeBase:
                 results = cursor.fetchall()
                 
                 if not results:
-                    return "No se encontraron soluciones relevantes en los manuales."
+                    return "No se encontraron soluciones relevantes en los manuales. (Manual)"
                 
                 # Formatear resultados
                 soluciones = []
                 for i, result in enumerate(results, 1):
                     solucion = f"""
-**Solución {i}** (Fuente: {result['documento_origen']}, Página: {result['pagina_numero']})
+**Solución {i} (Manual)** (Fuente: {result['documento_origen']}, Página: {result['pagina_numero']})
 Similitud: {result['similarity']:.2f}
 
 {result['chunk_text']}
@@ -529,6 +529,16 @@ class BuscarSolucionNode:
             3. Proporciona respuestas claras y estructuradas
             4. Si no encuentras solución, indícalo claramente
 
+            IMPORTANTE: Al dar soluciones, etiqueta cada paso según su fuente:
+            - Pasos del archivo JSON de problemas frecuentes: añadir (FAQ)
+            - Pasos de manuales técnicos: añadir (Manual)  
+            - Pasos generados por tu conocimiento: añadir (Otros)
+            
+            Ejemplo:
+            1. Verificar conexión eléctrica (FAQ)
+            2. Revisar manual de operación en página 15 (Manual)
+            3. Si persiste, contactar soporte técnico (Otros)
+
             Formato de respuesta:
             Thought: [tu razonamiento]
             Action: [herramienta a usar]
@@ -599,10 +609,16 @@ class BuscarSolucionNode:
                 # Buscar en JSON
                 json_solution = self.incidents_manager.buscar_solucion_json(incident_type, problema)
                 json_text = ""
-                json_source_label = ""
                 if json_solution:
-                    json_text = f"**Solución de problemas frecuentes (FAQ):**\n{json_solution[0]}\n\n"
-                    json_source_label = " (FAQ)"
+                # Etiquetar cada línea/paso del JSON con (FAQ)
+                    solution_lines = json_solution[0].split('\n')
+                    tagged_lines = []
+                    for line in solution_lines:
+                        if line.strip() and not line.strip().startswith('**'):
+                            tagged_lines.append(f"{line.strip()} (FAQ)")
+                        else:
+                            tagged_lines.append(line)
+                    json_text = f"**Solución de problemas frecuentes:**\n{chr(10).join(tagged_lines)}\n\n"
                 
                 # Buscar en manuales
                 manual_text = self.knowledge_base.buscar_solucion_rag(problema)
