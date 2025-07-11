@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.eroski_state import EroskiState, create_initial_eroski_state
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 from nodes.identificador_orquestador import identificador_orquestador_node
-from nodes.identificador_manual import identificacion_manual
+from nodes.identificador_manual_node import identificacion_manual
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage
 # =====================================================

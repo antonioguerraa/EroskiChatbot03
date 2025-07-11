@@ -25,6 +25,7 @@ from models.eroski_state import EroskiState
 from utils.llm.providers import get_llm, get_vectorizer
 from config.settings import get_settings
 from nodes.tools.confirmation_tool import ConfirmationTool
+from utils.incident_manager import get_incident_manager
 
 # Configuración de logging
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # MODELOS PYDANTIC PARA STRUCTURED OUTPUT
 # =============================================================================
+
 
 class ProblemIdentificationResult(BaseModel):
     """Modelo para la respuesta de identificación de problemas."""
@@ -441,6 +443,7 @@ class BuscarSolucionNode:
         self.knowledge_base = EroskiKnowledgeBase()
         self.incidents_manager = EroskiIncidentsManager()
         self.problem_tool = ProblemIdentificationTool(self.incidents_manager)
+        self._incident_manager = None
         self.confirmation_tool = ConfirmationTool()
         self.llm = get_llm()
         self.max_attempts = 3
@@ -449,6 +452,8 @@ class BuscarSolucionNode:
         # Configurar herramientas para el agente
         self.tools = self._setup_tools()
         self.agent = self._setup_agent()
+
+
     
     def _setup_tools(self) -> List[Tool]:
         """Configura las herramientas disponibles para el agente."""
@@ -766,7 +771,12 @@ class BuscarSolucionNode:
         print(f"👹confirmación incidente {state.get('incident_type_confirmed')}👹")
         print(f"👹pending_confirmation {state.get('pending_confirmation')}👹")
         print(f"👹awaiting_user_input {state.get('awaiting_user_input')}👹")
+        incident_id = self._track_incident_state(state)
         try:
+            incident_type = state.get("incident_type")
+            if not incident_type:
+                return self._handle_missing_incident_type(state)
+            
             # Preparar actualización base del estado
             base_update = {
                 "current_node": self.node_name,
@@ -949,6 +959,46 @@ class BuscarSolucionNode:
                 self.knowledge_base.close()
             except:
                 pass
+    
+    def _get_incident_manager(self):
+        """Obtener instancia singleton del incident manager"""
+        if self._incident_manager is None:
+            self._incident_manager = get_incident_manager()
+        return self._incident_manager
+    
+    def _track_incident_state(self, state: dict, updates: dict = None) -> str:
+        """
+        🎯 HELPER METHOD: Actualizar y trackear estado de incidencia
+        
+        Args:
+            state: Estado actual del nodo
+            updates: Actualizaciones opcionales al estado
+            
+        Returns:
+            incident_id: ID de la incidencia
+        """
+        try:
+            # Aplicar updates si se proporcionan
+            if updates:
+                state = {**state, **updates}
+            
+            # Convertir a EroskiState si no lo es
+            from models.eroski_state import EroskiState
+            if not isinstance(state, EroskiState):
+                eroski_state = EroskiState(state)
+            else:
+                eroski_state = state
+            
+            # Trackear con incident manager
+            incident_id = self._get_incident_manager().manage_incident(eroski_state)
+            
+            return incident_id
+            
+        except Exception as e:
+            # No fallar si hay error en tracking
+            print(f"⚠️ Error en incident tracking: {e}")
+            return state.get("incident_id", "ERROR-TRACKING")
+
 
     def __call__(self, state: EroskiState) -> EroskiState:
         """

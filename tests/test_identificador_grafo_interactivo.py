@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.eroski_state import create_initial_eroski_state, EroskiState
 from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_base_de_datos import identificador_base_de_datos_node
-from nodes.identificador_manual import recoger_datos_empleado_node
+from nodes.identificador_manual_node import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
 from nodes.identificacion_incidencia_node import identificacion_node
 from nodes.buscar_solucion_node import buscar_solucion_node
