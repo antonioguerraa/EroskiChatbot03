@@ -117,6 +117,8 @@ class EroskiState(TypedDict, total=False):
     identification_source: Optional[str]    # De donde obtuvo el tipo la incidencia
     pending_incident_type: Optional[str]    # Incidencia identificada pte confirmación
     incident_type_confirmed: bool          # Si el tipo de incidencia fue confirmado
+    max_intent_tipo_incidencia: Optional[int] # numero máximo de intentos para clasificar la incidencia
+    
 
     # ========== BÚSQUEDA DE SOLUCIÓN ==========
     awaiting_solution_confirmation: bool   # Si estás esperando que el usuario confirme si la solución funcionó
@@ -198,9 +200,8 @@ def create_initial_eroski_state(
     now = datetime.now()
     
     return EroskiState(
+        max_intent_tipo_incidencia = 4,
         authenticated=True,
-        incident_type="balanza",
-        incident_type_confirmed=True,
         incident_user_name = "Javier Guerra",
         employee_email = "javier.guerra@gmail.com",
         incident_store_name = "Durango",
