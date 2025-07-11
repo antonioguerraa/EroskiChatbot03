@@ -48,7 +48,10 @@ class InteractiveGrafoTester:
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
-            campos = [  "authenticated",
+            campos = [  
+                        "incident_id",
+                        "incident_department",
+                        "authenticated",
                         "email_authen_tried",
                         "employee_id_authent_tried",
                         "solution_found", 
@@ -121,7 +124,16 @@ class InteractiveGrafoTester:
 
         builder.add_edge("buscar_solucion", END)
 
-        
+        builder.add_conditional_edges(
+            "buscar_solucion",
+            lambda state: "buscar_solucion" if state.get("extra_info_provided") 
+                else ("resolucion_exitosa" if state.get("solution_found") 
+                else ("escalation" if state.get("escalation_needed") 
+                else END
+                )
+            )
+        )
+
         
         builder.add_conditional_edges("orquestador", route, {
             #"identificador_base_de_datos": "identificador_base_de_datos",
@@ -164,7 +176,7 @@ class InteractiveGrafoTester:
             print("🧩"*100)
             campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
             for campo in campos:
-                print(f"{self.state.get(campo)}") if self.state.get(campo) else None
+                print(f"{campo}: {self.state.get(campo)}") if self.state.get(campo) else None
         return True
 
     async def run(self):

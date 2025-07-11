@@ -107,7 +107,7 @@ class EroskiState(TypedDict, total=False):
     incident_department: Optional[str]
     incident_id: Optional[str]              # ID único de la incidencia
     incident_type: Optional[str]            # Tipo específico (desde JSON config)
-    incident_description: Optional[str]     # Descripción del problema
+    #incident_description: Optional[str]     # Descripción del problema
     problem_description: Optional[str]     # Descripción del problema
     incident_details: Optional[Dict[str, Any]] # Detalles específicos
     affected_equipment: Optional[str]       # Equipo afectado
@@ -125,8 +125,7 @@ class EroskiState(TypedDict, total=False):
     solution_content: Optional[str]        # Contenido de la solución
     resolution_steps: Optional[List[str]]  # Pasos para resolver
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
-    solucion_catalogo: bool                # dice si la solución se encontró en el catálogo
-    consultar_manual: bool                 # Si debe consultar el manual
+    extra_info_provided: bool               # Si se proporcionó información adicional
     
     # ========== ESCALACIÓN ==========
     escalation_needed: bool                # Si requiere escalación
@@ -199,12 +198,18 @@ def create_initial_eroski_state(
     now = datetime.now()
     
     return EroskiState(
+        authenticated=True,
+        incident_type="balanza",
+        incident_type_confirmed=True,
+        incident_user_name = "Javier Guerra",
+        employee_email = "javier.guerra@gmail.com",
+        incident_store_name = "Durango",
+        incident_department = "Pescadería",
+
         # Identificación
         session_id=session_id,
-        authenticated=False,
         email_authen_tried = False,
         employee_id_authent_tried =False,
-        incident_type_confirmed = False,
         
         # Conversación
         messages=[],

@@ -78,17 +78,25 @@ Responde solo con "modificar" o "continuar".
                 "mensaje_usuario": mensaje_usuario,
             })
             intencion = intencion_response.content.strip().lower()
+            print(f"👹intencion: {intencion}")
         except Exception as e:
             self.logger.warning(f"❌ Error detectando intención: {e}")
             intencion = "continuar"  # fallback seguro
 
 
-
+        
         nuevo_estado = state.copy()
+        campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
+        for campo in campos:
+            print(f"👹campo1: {campo} - {nuevo_estado.get(campo, 'No especificado')}")
         nuevo_estado["last_activity"] = datetime.now()
         datos_extraidos = self._llm_extraccion(datos_actuales, mensaje_usuario)
-
+        print(f"👹datos_extraidos: {datos_extraidos}")
+        # 3. Detectar cambios en el estado (si hay alguna
         resultado_confirmacion = self._detectar_cambios(state, datos_extraidos)
+        print(f"👹resultado_confirmacion: {resultado_confirmacion}")
+
+
 
         if isinstance(resultado_confirmacion, Command):
             return resultado_confirmacion  # Salimos del nodo pidiendo confirmación
@@ -118,7 +126,10 @@ Responde solo con "modificar" o "continuar".
                 })
         elif intencion == "continuar":
             # Verificar si datos completos
+            print(f"👹intencion: {intencion}")
             campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
+            for campo in campos:
+                print(f"👹campo: {campo} - {nuevo_estado.get(campo, 'No especificado')}")
             if all(nuevo_estado.get(campo) for campo in campos):
                 resumen = (
                     f"✅ Te he identificado:\n\n"
@@ -202,20 +213,26 @@ Responde solo con "modificar" o "continuar".
         datos_actuales_text = "\n".join([f"- {k}: {v}" for k, v in datos_actuales.items()])
 
         system_prompt = f"""
-                Eres un asistente de Eroski que debes extraer 4 campos del mensaje del usuario:
-                - nombre
-                - apellido
-                - tienda (de esta lista: {', '.join(self.tiendas[:20])})
-                - seccion (Carnicería, Pescadería, Panadería, Caja, etc)
+        Eres un asistente de Eroski. Tu tarea es extraer hasta 4 campos del mensaje del usuario:
 
-                Los datos actuales son:
-                {datos_actuales_text}
+        - nombre
+        - apellido
+        - tienda (de esta lista: {', '.join(self.tiendas[:20])})
+        - seccion (Carnicería, Pescadería, Panadería, Caja, etc)
 
-                Si no encuentras un dato, ponlo como null.
-                Si el usuario quiere modificar algún dato, actualízalo. Si no, mantenlos igual.
+        Los datos actuales del usuario son:
+        {datos_actuales_text}
 
-                Responde con JSON que contenga el nombre, apellido, tienda y sección.
-            """
+        INSTRUCCIONES:
+        - Solo actualiza un campo si el usuario lo menciona de forma clara y directa.
+        - Si no menciona un dato explícitamente, déjalo como null.
+        - No infieras. Por ejemplo, si el usuario dice "tengo un problema con el TPV", no asumas que es Caja.
+        - Si el usuario quiere modificar un dato que ya tenía, actualízalo. Si no lo menciona, mantenlo como estaba.
+
+        DEVUELVE:
+        Un JSON plano con los campos: nombre, apellido, tienda, seccion.
+        """
+
         extraccion_prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{input}")

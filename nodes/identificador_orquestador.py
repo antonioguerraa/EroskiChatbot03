@@ -29,16 +29,11 @@ class IdentificadorOrquestadorNode:
 
     async def execute(self, state: EroskiState) -> Command:
         # Si el usuario ya está autenticado, no repetir
-        if state.get("authenticated", False):
-            return Command(update={
-                "current_node": self.node_name,
-                "last_activity": datetime.now()
-            })
+        return Command(update={
+            "current_node": self.node_name,
+            "last_activity": datetime.now()
+        })
 
-        if self._debe_usar_identificacion_manual(state):
-            return await recoger_datos_empleado_node(state)
-        else:
-            return await identificador_base_de_datos_node(state)
 
    
 
