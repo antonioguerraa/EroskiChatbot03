@@ -832,6 +832,17 @@ HISTORIAL DE PENSAMIENTOS:
             
             # Obtener último mensaje del usuario Y analizar historial completo
             last_message, all_user_messages = self._extract_user_messages(messages)
+            attempts = state.get("identification_attempts", 0)
+            max_attempts = state.get("max_intent_tipo_incidencia", 4)
+            if attempts >= max_attempts:
+                self.logger.warning(f"⚠️ Límite de intentos alcanzado: {attempts}/{max_attempts}")
+                return Command(update={
+                    "messages": [AIMessage(content="He intentado identificar la incidencia varias veces. Te voy a conectar con un supervisor para que pueda ayudarte mejor.")],
+                    "escalation_needed": True,
+                    "escalation_reason": f"Límite de intentos de identificación alcanzado ({attempts}/{max_attempts})",
+                    "current_node": "supervisor",
+                    "awaiting_user_input": False
+                })
             # Procesar confirmación pendiente
             if state.get("pending_confirmation"):
                 last_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
@@ -885,10 +896,11 @@ Evidencia encontrada: {evidence}
 Por favor, describe el problema que estás experimentando o menciona qué equipo está dando problemas."""
                 
                 return Command(update={
-                    "messages": messages + [AIMessage(content=response_text)],
+                    "messages":[AIMessage(content=response_text)],
                     "identification_started": True,
                     "current_node": "identificar_incidencia",
-                    "awaiting_user_input": True
+                    "awaiting_user_input": True,
+                    "identification_attempts": attempts + 1  # ← AGREGAR
                 })
             
 
@@ -1077,6 +1089,7 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
         Manejar confirmación de tipo de incidencia con análisis mejorado del mensaje del usuario
         """
         try:
+            attempts = state.get("identification_attempts", 0)
             if not self.confirmation_tool or not last_message:
                 # Sin tool de confirmación, asumir "sí" si es positivo
                 confirmation = "si" if any(word in last_message.lower() 
@@ -1151,7 +1164,8 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                             "identification_keywords": keywords,
                             "identification_source": "rejection_message_reanalysis",
                             "previous_rejected_types": state.get("previous_rejected_types", []) + [incident_type],
-                            "awaiting_user_input": True
+                            "awaiting_user_input": True,
+                            "identification_attempts": attempts + 1
                         })
                     
                     else:
@@ -1184,7 +1198,8 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                             "pending_confirmation": False,
                             "pending_incident_type": None,
                             "previous_rejected_types": rejected_types,
-                            "awaiting_user_input": True
+                            "awaiting_user_input": True,
+                            "identification_attempts":  attempts + 1
                         })
                         
                 except Exception as e:
@@ -1203,7 +1218,8 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                         "pending_confirmation": False,
                         "pending_incident_type": None,
                         "previous_rejected_types": rejected_types,
-                        "awaiting_user_input": True
+                        "awaiting_user_input": True,
+                        "identification_attempts": attempts + 1
                     })
             
             else:
@@ -1218,7 +1234,8 @@ Analiza cuidadosamente todo el historial y determina si hay evidencia de una inc
                 
                 return Command(update={
                     "messages": [AIMessage(content=response_text)],
-                    "awaiting_user_input": True
+                    "awaiting_user_input": True,
+                    "identification_attempts": attempts + 1  # ← AGREGAR
                 })
                 
         except Exception as e:

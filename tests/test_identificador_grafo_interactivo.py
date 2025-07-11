@@ -21,6 +21,8 @@ from nodes.identificador_manual_node import recoger_datos_empleado_node
 from nodes.classify_node import classify_node
 from nodes.identificacion_incidencia_node import identificacion_node
 from nodes.buscar_solucion_node import buscar_solucion_node
+from nodes.supervisor_node import supervisor_node
+from nodes.finalize_node import finalize_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
 import logging
@@ -43,8 +45,10 @@ class InteractiveGrafoTester:
         builder.add_node("identificar_incidencia", identificacion_node)
         builder.add_node("buscar_solucion", buscar_solucion_node)
         
+        builder.add_node("supervisor_node", supervisor_node)
+        builder.add_node("resolucion_exitosa", finalize_node)
+        
         builder.set_entry_point("orquestador")
-
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
@@ -73,33 +77,38 @@ class InteractiveGrafoTester:
             #if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
             #    logging.info("👹 Entra en identificador base de datos")
             #    return "identificador_base_de_datos"
+            if state.get("escalation_needed "):
+                return "supervisor_node"
             if not state.get("authenticated"):
                 logging.info("👹 Entra en recoger_datos")
                 return "identificador_manual"
             if not state.get("incident_type_confirmed"):
                 logging.info("👹 Entra en identificar tipo incidencia")
                 return "identificar_incidencia"
+            if state.get("solution_found"):
+                return "resolucion_exitosa"
             logging.info("👹 Entra en buscar solución")
             return "buscar_solucion"
 
+        """
         def ruta_post_identificacion_db(state: EroskiState) -> str:
             if state.get("authenticated"):
                 return "identificar_incidencia"
             else:
                 return END
 
-        #builder.add_conditional_edges(
-        #    "identificador_base_de_datos",
-        #    ruta_post_identificacion_db,
-        #    {
-        #        "identificar_incidencia": "identificar_incidencia",
-        #        END: END
-        #    }
-        #)
+        builder.add_conditional_edges(
+            "identificador_base_de_datos",
+            ruta_post_identificacion_db,
+            {
+                "identificar_incidencia": "identificar_incidencia",
+                END: END
+            }
+        )
 
         def ruta_post_identificacion_manual(state: EroskiState) -> str:
             return "identificar_incidencia" if state.get("authenticated") else END
-
+        
         builder.add_conditional_edges(
             "identificador_manual",
             ruta_post_identificacion_manual,
@@ -108,38 +117,51 @@ class InteractiveGrafoTester:
                 END: END
             }
         )
-
-
         def ruta_post_identificar_incidencia(state: EroskiState) -> str:
-            return "buscar_solucion" if state.get("incident_type_confirmed") else END
+            return 'buscar_solucion' if state.get('incident_type_confirmed') else END
 
         builder.add_conditional_edges(
-            "identificar_incidencia",
+            'identificar_incidencia',
+            
             ruta_post_identificar_incidencia,
             {
-                "buscar_solucion": "buscar_solucion",
+                'buscar_solucion': 'buscar_solucion',
                 END: END
             }
         )
+        """
+        
+        builder.add_conditional_edges(
+            "identificador_manual",
+            lambda state: "identificar_incidencia" if state.get("authenticated") else END
+        )
+
+        builder.add_conditional_edges(
+            "identificar_incidencia",
+            lambda state: "buscar_solucion" if state.get("incident_type_confirmed") 
+                else ("supervisor_node" if state.get("escalation_needed") 
+                else END
+                )
+            )
 
         builder.add_edge("buscar_solucion", END)
 
         builder.add_conditional_edges(
             "buscar_solucion",
             lambda state: "buscar_solucion" if state.get("extra_info_provided") 
+                else ("supervisor_node" if state.get("escalation_needed") 
                 else ("resolucion_exitosa" if state.get("solution_found") 
-                else ("escalation" if state.get("escalation_needed") 
                 else END
                 )
             )
         )
 
-        
         builder.add_conditional_edges("orquestador", route, {
             #"identificador_base_de_datos": "identificador_base_de_datos",
             "identificador_manual": "identificador_manual",
             "identificar_incidencia": "identificar_incidencia",
             "buscar_solucion": "buscar_solucion",
+            "resolucion_exitosa":"resolucion_exitosa",
             END: END
         })
 
