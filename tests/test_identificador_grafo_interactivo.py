@@ -38,7 +38,7 @@ class InteractiveGrafoTester:
     def build_graph(self):
         builder = StateGraph(EroskiState)
         builder.add_node("orquestador", identificador_orquestador_node)
-        builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
+        #builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
         builder.add_node("identificador_manual", recoger_datos_empleado_node)
         builder.add_node("identificar_incidencia", identificacion_node)
         builder.add_node("buscar_solucion", buscar_solucion_node)
@@ -67,9 +67,9 @@ class InteractiveGrafoTester:
             for campo in campos:
                 print(f"🎛️ {campo}: {state.get(campo)}")
 
-            if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
-                logging.info("👹 Entra en identificador base de datos")
-                return "identificador_base_de_datos"
+            #if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
+            #    logging.info("👹 Entra en identificador base de datos")
+            #    return "identificador_base_de_datos"
             if not state.get("authenticated"):
                 logging.info("👹 Entra en recoger_datos")
                 return "identificador_manual"
@@ -85,14 +85,14 @@ class InteractiveGrafoTester:
             else:
                 return END
 
-        builder.add_conditional_edges(
-            "identificador_base_de_datos",
-            ruta_post_identificacion_db,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
+        #builder.add_conditional_edges(
+        #    "identificador_base_de_datos",
+        #    ruta_post_identificacion_db,
+        #    {
+        #        "identificar_incidencia": "identificar_incidencia",
+        #        END: END
+        #    }
+        #)
 
         def ruta_post_identificacion_manual(state: EroskiState) -> str:
             return "identificar_incidencia" if state.get("authenticated") else END
@@ -124,7 +124,7 @@ class InteractiveGrafoTester:
         
         
         builder.add_conditional_edges("orquestador", route, {
-            "identificador_base_de_datos": "identificador_base_de_datos",
+            #"identificador_base_de_datos": "identificador_base_de_datos",
             "identificador_manual": "identificador_manual",
             "identificar_incidencia": "identificar_incidencia",
             "buscar_solucion": "buscar_solucion",

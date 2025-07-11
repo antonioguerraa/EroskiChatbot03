@@ -28,6 +28,7 @@ dependencies = [
     "openai>=1.88.0",
     "pgvector>=0.4.1",
     "psycopg2-binary>=2.9.10",
+    "pydantic[email]>=2.11.7",
     "pymupdf>=1.26.1",
     "pypdf>=5.7.0",
     "pypdf2>=3.0.1",

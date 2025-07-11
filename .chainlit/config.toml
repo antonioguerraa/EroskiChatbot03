@@ -1,55 +1,82 @@
+# =====================================================
+# .chainlit/config.toml - Configuración de Chainlit para Eroski
+# =====================================================
+
 [project]
-# Nombre que aparecerá en la interfaz
-name = "🛠️ Asistente de Incidencias"
+# Habilitar telemetría (datos anónimos de uso)
+enable_telemetry = true
 
-# Configuración del chat
-[UI]
-# Título de la página
-name = "Asistente de Incidencias"
-
-# Descripción
-description = "Tu asistente inteligente para resolver incidencias técnicas"
-
-# Ocultar el botón de "Made with Chainlit"
-hide_cot = false
-
-# Tema (light o dark)
-default_collapse_content = true
-
-# Configuración de la ventana de chat
-[UI.theme]
-primary_color = "#FF6B35"
-background_color = "#FAFAFA"
-paper_color = "#FFFFFF"
-
-[meta]
-generated_by = "0.7.0"
-
-# Configuración del servidor
-[project.settings]
-# Puerto (opcional)
-# port = 8000
-
-# Host (opcional)  
-# host = "localhost"
-
-# Autoreload durante desarrollo
-auto_reload = true
-
-# Configuración de variables de entorno (corregida)
+# Variables de entorno requeridas por usuarios
 user_env = []
 
-# Configuración de archivos
-[project.file]
-# Máximo tamaño de archivo para uploads (en MB)
-max_size_mb = 100
+# Tiempo de sesión en segundos (1 hora)
+session_timeout = 3600
 
-# Tipos de archivo permitidos
-allowed_mime_types = [
-    "text/plain",
-    "application/pdf",
-    "text/csv",
-    "application/json",
-    "image/jpeg",
-    "image/png"
-]
+# Habilitar caché de terceros
+cache = false
+
+# Orígenes autorizados
+allow_origins = ["*"]
+
+[features]
+# Mostrar playground de prompts
+prompt_playground = true
+
+# Procesar HTML (deshabilitado por seguridad)
+unsafe_allow_html = false
+
+# Procesar expresiones matemáticas
+latex = false
+
+# Auto-tag threads con user ID
+auto_tag_thread = true
+
+# Permitir subida de archivos
+multi_modal = true
+
+# Voz a texto
+speech_to_text = false
+
+# Texto a voz
+text_to_speech = false
+
+[UI]
+# Nombre de la aplicación
+name = "Asistente de Incidencias Eroski"
+
+# Mostrar README por defecto
+show_readme_as_default = true
+
+# Descripción para meta tags
+description = "Chatbot inteligente para gestión de incidencias técnicas en tiendas Eroski"
+
+# Colapsar contenido largo por defecto
+default_collapse_content = true
+
+# Expandir mensajes por defecto
+default_expand_messages = false
+
+# Ocultar chain of thought
+hide_cot = false
+
+# CSS personalizado
+custom_css = "/public/eroski-theme.css"
+
+[UI.theme]
+default_mode = "light"
+
+[UI.theme.light]
+# Colores personalizados Eroski
+[UI.theme.light.primary]
+main = "#E31E24"
+dark = "#B71C21" 
+light = "#F5E6E7"
+
+[UI.theme.dark]
+[UI.theme.dark.primary]
+main = "#E31E24"
+dark = "#B71C21"
+light = "#F5E6E7"
+
+[meta]
+generated_by = "1.0.505"

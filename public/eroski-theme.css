@@ -1,0 +1,293 @@
+/* =====================================================
+   public/eroski-theme.css - Tema personalizado para Eroski
+   ===================================================== */
+
+/* Importar fuentes de Google */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Variables de colores de Eroski */
+:root {
+  --eroski-red: #E31E24;
+  --eroski-dark-red: #B71C21;
+  --eroski-light-red: #F5E6E7;
+  --eroski-blue: #003D7A;
+  --eroski-light-blue: #E6F2FF;
+  --eroski-green: #00A651;
+  --eroski-light-green: #E6F7F0;
+  --eroski-gray: #F5F5F5;
+  --eroski-dark-gray: #666666;
+  --eroski-text: #333333;
+}
+
+/* Fuente global */
+* {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Header personalizado */
+.chainlit-header {
+  background: linear-gradient(135deg, var(--eroski-red) 0%, var(--eroski-dark-red) 100%);
+  border-bottom: 3px solid var(--eroski-blue);
+}
+
+.chainlit-header h1 {
+  color: white !important;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Personalización del avatar del bot */
+.message-avatar {
+  background: linear-gradient(135deg, var(--eroski-red) 0%, var(--eroski-dark-red) 100%);
+  color: white;
+  font-weight: 600;
+}
+
+/* Mensajes del asistente */
+.message.assistant .message-content {
+  background: var(--eroski-light-blue);
+  border-left: 4px solid var(--eroski-blue);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0;
+}
+
+/* Mensajes del usuario */
+.message.user .message-content {
+  background: var(--eroski-light-red);
+  border-left: 4px solid var(--eroski-red);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0;
+}
+
+/* Botones de acción */
+.chainlit-button, .action-button {
+  background: var(--eroski-red);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.chainlit-button:hover, .action-button:hover {
+  background: var(--eroski-dark-red);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(227, 30, 36, 0.3);
+}
+
+/* Botones secundarios */
+.secondary-button {
+  background: var(--eroski-blue);
+  color: white;
+}
+
+.secondary-button:hover {
+  background: #002A5C;
+}
+
+/* Input de mensaje */
+.message-input {
+  border: 2px solid var(--eroski-gray);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.message-input:focus {
+  border-color: var(--eroski-red);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(227, 30, 36, 0.1);
+}
+
+/* Sidebar */
+.chainlit-sidebar {
+  background: var(--eroski-gray);
+  border-right: 1px solid #E0E0E0;
+}
+
+/* Steps (indicadores de progreso) */
+.step-container {
+  background: var(--eroski-light-green);
+  border-left: 4px solid var(--eroski-green);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+}
+
+.step-title {
+  color: var(--eroski-green);
+  font-weight: 600;
+}
+
+/* Elementos de la interfaz */
+.element-container {
+  border: 1px solid #E0E0E0;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 8px 0;
+  background: white;
+}
+
+/* Mensajes de sistema */
+.system-message {
+  background: var(--eroski-light-green);
+  border: 1px solid var(--eroski-green);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  color: var(--eroski-text);
+}
+
+/* Mensajes de error */
+.error-message {
+  background: #FFE6E6;
+  border: 1px solid #FF6B6B;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  color: #D63031;
+}
+
+/* Loader personalizado */
+.chainlit-loader {
+  color: var(--eroski-red);
+}
+
+/* Personalización de scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--eroski-gray);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--eroski-red);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--eroski-dark-red);
+}
+
+/* Iconos personalizados */
+.icon-balanza::before {
+  content: "⚖️";
+  margin-right: 8px;
+}
+
+.icon-tpv::before {
+  content: "💳";
+  margin-right: 8px;
+}
+
+.icon-impresora::before {
+  content: "🖨️";
+  margin-right: 8px;
+}
+
+.icon-tienda::before {
+  content: "🏪";
+  margin-right: 8px;
+}
+
+/* Animaciones suaves */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .message-content {
+    padding: 12px;
+    font-size: 14px;
+  }
+  
+  .chainlit-button, .action-button {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+
+/* Estados especiales */
+.status-success {
+  background: var(--eroski-light-green);
+  color: var(--eroski-green);
+  border-left: 4px solid var(--eroski-green);
+}
+
+.status-warning {
+  background: #FFF8E1;
+  color: #F57C00;
+  border-left: 4px solid #FF9800;
+}
+
+.status-info {
+  background: var(--eroski-light-blue);
+  color: var(--eroski-blue);
+  border-left: 4px solid var(--eroski-blue);
+}
+
+/* Header con logo */
+.eroski-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--eroski-red) 0%, var(--eroski-dark-red) 100%);
+  color: white;
+}
+
+.eroski-logo {
+  height: 32px;
+  width: auto;
+}
+
+/* Footer */
+.eroski-footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--eroski-dark-gray);
+  font-size: 12px;
+  border-top: 1px solid #E0E0E0;
+}
+
+/* Ajustes específicos para elementos de Chainlit */
+.cl-message .cl-message-content {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cl-action-button {
+  background: var(--eroski-red) !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+}
+
+.cl-action-button:hover {
+  background: var(--eroski-dark-red) !important;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --eroski-gray: #2A2A2A;
+    --eroski-text: #E0E0E0;
+  }
+  
+  .message-content {
+    color: var(--eroski-text);
+  }
+}
