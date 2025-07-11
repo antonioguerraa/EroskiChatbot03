@@ -18,6 +18,7 @@ import logging
 # Configurar logging
 logger = logging.getLogger(__name__)
 
+
 class ConfirmationTool:
     """
     Tool reutilizable para identificar si un mensaje del usuario es de confirmación.
@@ -159,46 +160,6 @@ INSTRUCCIONES:
             logger.error(f"Error extrayendo contexto de confirmación: {e}")
             return None
 
-    def _is_explicit_confirmation(self, message: str) -> bool:
-        """
-        Determina si el mensaje es claramente una confirmación/negación explícita
-        """
-        message_lower = message.lower().strip()
-        
-        # Palabras que indican confirmación/negación explícita inequívoca
-        explicit_confirmations = [
-            "sí", "si", "s", "yes", "y", "vale", "ok", "correcto", "exacto", 
-            "perfecto", "está bien", "de acuerdo", "confirmo", "acepto", 
-            "adelante", "claro", "por supuesto", "sin duda"
-        ]
-        
-        explicit_negations = [
-            "no", "n", "nope", "negativo", "para nada", "en absoluto", 
-            "de ninguna manera", "nada que ver", "incorrecto", "no es así",
-            "no estoy de acuerdo", "cancela", "no procede"
-        ]
-        
-        # Si el mensaje ES EXACTAMENTE una de estas palabras o frases cortas
-        if message_lower in explicit_confirmations or message_lower in explicit_negations:
-            return True
-            
-        # Frases cortas que son claramente explícitas
-        short_explicit_patterns = [
-            "sí, eso es", "no, eso no es", "correcto, procede", "no, para nada",
-            "vale, continúa", "no, incorrecto", "está bien", "no está bien"
-        ]
-        
-        if any(pattern in message_lower for pattern in short_explicit_patterns):
-            return True
-            
-        # Si el mensaje es muy corto (menos de 4 palabras) y contiene palabras explícitas
-        words = message_lower.split()
-        if len(words) <= 3:
-            if any(word in explicit_confirmations + explicit_negations for word in words):
-                return True
-        
-        return False
-
     def check_raw(self, user_message: str, context: Optional[str] = None) -> Literal["si", "no", "no se"]:
         """
         Lógica central de confirmación, usable directamente desde código Python.
@@ -212,22 +173,19 @@ INSTRUCCIONES:
             clean_message = user_message.strip()
             logger.info(f"Analizando confirmación: '{clean_message}'")
 
-            # NUEVA LÓGICA: Determinar si es explícita o implícita
-            is_explicit = self._is_explicit_confirmation(clean_message)
+            # NUEVA LÓGICA SIMPLIFICADA: Siempre probar explicit_chain primero
+            logger.info("Probando confirmación explícita...")
+            explicit_response = self.explicit_chain.invoke({"user_message": clean_message})
+            explicit_result = explicit_response.content.strip().lower()
             
-            if is_explicit:
-                # Usar chain explícito para confirmaciones claras
-                logger.info("Detectado como confirmación explícita")
-                response = self.explicit_chain.invoke({"user_message": clean_message})
-                result = response.content.strip().lower()
-                
-                if result in ["si", "no"]:
-                    logger.info(f"Confirmación explícita detectada: {result}")
-                    return result
+            # Si explicit_chain da una respuesta clara, usarla
+            if explicit_result in ["si", "no"]:
+                logger.info(f"Confirmación explícita detectada: {explicit_result}")
+                return explicit_result
             
-            # Si no es explícita Y tenemos contexto, intentar confirmación implícita
-            if not is_explicit and context:
-                logger.info("Intentando detectar confirmación implícita...")
+            # Si explicit_chain devuelve "no se" Y tenemos contexto, intentar implicit_chain
+            if explicit_result == "no se" and context:
+                logger.info("Explicit_chain devolvió 'no se', probando confirmación implícita...")
                 implicit_response = self.implicit_chain.invoke({
                     "confirmation_question": context,
                     "user_message": clean_message
@@ -237,18 +195,14 @@ INSTRUCCIONES:
                 if implicit_result in ["si", "no"]:
                     logger.info(f"Confirmación implícita detectada: {implicit_result}")
                     return implicit_result
+                else:
+                    logger.info(f"Implicit_chain también devolvió: {implicit_result}")
             
-            # Si no tenemos contexto pero no es explícita, probar explicit_chain como fallback
-            elif not context:
-                logger.info("Sin contexto, usando chain explícito como fallback")
-                response = self.explicit_chain.invoke({"user_message": clean_message})
-                result = response.content.strip().lower()
-                
-                if result in ["si", "no"]:
-                    logger.info(f"Confirmación explícita (fallback) detectada: {result}")
-                    return result
-
-            # Si todo falla, devolver "no se"
+            # Si no tenemos contexto, informar
+            elif explicit_result == "no se" and not context:
+                logger.info("Explicit_chain devolvió 'no se' pero no hay contexto para implicit_chain")
+            
+            # Si todo falla o no hay contexto, devolver "no se"
             logger.info("No se pudo determinar confirmación, devolviendo 'no se'")
             return "no se"
 
@@ -318,6 +272,7 @@ def check_confirmation_with_history(user_message: str, messages: List[BaseMessag
     """
     tool = ConfirmationTool()
     return tool.check_with_history(user_message, messages)
+
 
 #-------------------------------------
 #-------------------------------------
