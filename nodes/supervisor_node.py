@@ -193,9 +193,9 @@ class SupervisorNode(BaseNode):
             "identification_attempts": state.get("identification_attempts", 0),
             "max_identification_attempts": state.get("max_intent_tipo_incidencia", 4),
             "employee_info": {
-                "name": state.get("employee_name", "No identificado"),
+                "name": state.get("incident_user_name", "No identificado"),
                 "email": state.get("employee_email", "No proporcionado"),
-                "store": state.get("store_name", "No identificada"),
+                "store": state.get("incident_store_name", "No identificada"),
                 "department": state.get("incident_department", "No especificado")
             },
             "incident_info": {
@@ -286,7 +286,7 @@ class SupervisorNode(BaseNode):
             "escalation_type": escalation_type,
             "source_node": state.get("current_node", "unknown"),
             "employee_email": state.get("employee_email", ""),
-            "store_name": state.get("store_name", ""),
+            "incident_store_name": state.get("incident_store_name", ""),
             "escalation_reason": state.get("escalation_reason", ""),
             "assigned_department": contact_info["department"],
             "priority": contact_info["priority"],
@@ -308,26 +308,26 @@ class SupervisorNode(BaseNode):
         Returns:
             Mensaje del supervisor
         """
-        employee_name = context["employee_info"]["name"]
+        incident_user_name = context["employee_info"]["name"]
         escalation_id = escalation_record["escalation_id"]
         department = contact_info["department"]
         
         # Mensaje base personalizado por tipo
         if escalation_type == EscalationType.AUTHENTICATION:
-            intro = f"Hola {employee_name}, veo que hay dificultades verificando tu identidad."
+            intro = f"Hola {incident_user_name}, veo que hay dificultades verificando tu identidad."
             
         elif escalation_type == EscalationType.IDENTIFICATION:
-            intro = f"Hola {employee_name}, entiendo que no hemos logrado identificar tu problema técnico claramente."
+            intro = f"Hola {incident_user_name}, entiendo que no hemos logrado identificar tu problema técnico claramente."
             
         elif escalation_type == EscalationType.TECHNICAL:
             equipment = context["incident_info"]["equipment"]
-            intro = f"Hola {employee_name}, veo que tienes problemas técnicos con {equipment}."
+            intro = f"Hola {incident_user_name}, veo que tienes problemas técnicos con {equipment}."
             
         elif escalation_type == EscalationType.TIMEOUT:
-            intro = f"Hola {employee_name}, hemos intentado ayudarte varias veces sin éxito."
+            intro = f"Hola {incident_user_name}, hemos intentado ayudarte varias veces sin éxito."
             
         else:
-            intro = f"Hola {employee_name}, he revisado tu consulta."
+            intro = f"Hola {incident_user_name}, he revisado tu consulta."
         
         # Construcción del mensaje completo
         response = f"""🔥 **SUPERVISOR CONECTADO**
@@ -472,9 +472,9 @@ if __name__ == "__main__":
             "escalation_reason": "Límite de intentos de identificación alcanzado (4/4)",
             "escalation_level": "supervisor",
             "current_node": "identificar_incidencia",
-            "employee_name": "Juan Pérez",
+            "incident_user_name": "Juan Pérez",
             "employee_email": "juan.perez@eroski.es",
-            "store_name": "Eroski Bilbao Centro",
+            "incident_store_name": "Eroski Bilbao Centro",
             "attempts": 4,
             "identification_attempts": 4
         })

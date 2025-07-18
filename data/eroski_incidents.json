@@ -11,6 +11,7 @@
         "Error de calibración": "Limpiar la superficie de pesado y realizar calibración desde el menú de configuración",
         "Etiquetas salen en blanco": "Verificar que el rollo de etiquetas esté correctamente instalado y que no esté agotado"
       },
+      "info_adicional":["numero de serie", "marca", "modelo"],
       "keywords": ["balanza", "peso", "gramos", "etiqueta", "precio", "fresco", "pesado", "bascula"],
       "urgency_level": 2,
       "category": "hardware",

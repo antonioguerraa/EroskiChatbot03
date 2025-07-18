@@ -77,6 +77,10 @@ class EroskiState(TypedDict, total=False):
     - Compatible con LangGraph checkpointer
     """
     
+    # ========== ESTADO DEL SISTEMA
+    busqueda_faq: bool                     # Si se está realizando una búsqueda en FAQ
+    busqueda_manual: bool                  # Si se está realizando una búsqueda por manual
+
     # ========== IDENTIFICACIÓN DEL EMPLEADO ==========
     session_id: str                        # ID único de la sesión
     employee_id: Optional[str]              # Número de empleado
@@ -85,6 +89,7 @@ class EroskiState(TypedDict, total=False):
     employee_email: Optional[str]           # Email corporativo
     store_id: Optional[str]                 # Código de tienda
     store_name: Optional[str]               # Nombre de la tienda
+    tienda_tentativa: Optional[str]         # Nombre tienda proporcionada por el usuario y no identificada
     store_type: Optional[str]               # Tipo: hipermercado, supermercado, etc.
     department: Optional[str]               # Departamento: caja, carnicería, etc.
     shift: Optional[str]                    # Turno: mañana, tarde, noche
@@ -92,7 +97,9 @@ class EroskiState(TypedDict, total=False):
     authenticated: bool                     # Si el empleado está autenticado
     email_authen_tried: bool                     # Si el empleado está autenticado
     employee_id_authent_tried: bool                     # Si el empleado está autenticado
-    
+    intento_tienda: Optional[int]           # número de intentos para identificar la tienda
+    tienda_identificada: bool               #si la tienda se identificó con el maestro tienda
+
     # ========== CONVERSACIÓN ==========
     messages: Annotated[List[BaseMessage], add_messages]             # Historia de mensajes
     
@@ -103,7 +110,9 @@ class EroskiState(TypedDict, total=False):
     
     # ========== INFORMACIÓN DE LA INCIDENCIA ==========
     incident_user_name: Optional[str]       # Nombre del usuario reportado
+    incident_last_name: Optional[str]       # Apellido del usuario reportado
     incident_store_name: Optional[str]
+    incident_store_name_temp: Optional[str]
     incident_department: Optional[str]
     incident_id: Optional[str]              # ID único de la incidencia
     incident_type: Optional[str]            # Tipo específico (desde JSON config)
@@ -116,10 +125,16 @@ class EroskiState(TypedDict, total=False):
     aditional_info: Optional[str]           # Información adicional sobre el problem
     identification_source: Optional[str]    # De donde obtuvo el tipo la incidencia
     pending_incident_type: Optional[str]    # Incidencia identificada pte confirmación
+    previous_rejected_types: Optional[List[str]] #lista de incidentes no rechazados por el usuario
     incident_type_confirmed: bool          # Si el tipo de incidencia fue confirmado
     max_intent_tipo_incidencia: Optional[int] # numero máximo de intentos para clasificar la incidencia
     identification_attempts: Optional[int] # numero máximo de intentos para clasificar la incidencia
-    
+    incident_info_adicional: Optional[Dict[str, str]]
+    incident_info_adicional_required: Optional[bool]
+    incident_info_adicional_completa: Optional[bool]
+
+    # ========== BÚSQUEDA DE PROBLEMA ==========
+    problem_identified = bool               # Si se identificó el problema
 
     # ========== BÚSQUEDA DE SOLUCIÓN ==========
     awaiting_solution_confirmation: bool   # Si estás esperando que el usuario confirme si la solución funcionó
@@ -129,6 +144,8 @@ class EroskiState(TypedDict, total=False):
     resolution_steps: Optional[List[str]]  # Pasos para resolver
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
     extra_info_provided: bool               # Si se proporcionó información adicional
+    solution_attempts: Optional[int]       # Intentos para obtener solución
+    solution_validation_pending: bool        # Si estás esperando que el usuario confirme la solución
     
     # ========== ESCALACIÓN ==========
     escalation_needed: bool                # Si requiere escalación
@@ -152,6 +169,9 @@ class EroskiState(TypedDict, total=False):
     awaiting_user_input: bool              # Si está esperando input del usuario
     pending_confirmation: bool            # Si está pendiente de confirmación
     modificaciones_pendientes: Optional[Dict[str, str]]
+    escalate_to_supervisor: bool         # Si requiere escalación al supervisor
+    
+
     
     # ========== RESULTADO Y MÉTRICAS ==========
     resolved: bool                         # Si se resolvió el problema
@@ -201,13 +221,23 @@ def create_initial_eroski_state(
     now = datetime.now()
     
     return EroskiState(
-        max_intent_tipo_incidencia = 4,
-        escalation_needed = False,
-        authenticated=True,
-        incident_user_name = "Javier Guerra",
-        employee_email = "javier.guerra@gmail.com",
-        incident_store_name = "Durango",
-        incident_department = "Pescadería",
+        itentos_identificar_usuario = 0,
+        #incident_info_adicional_completa = True,
+        intento_tienda = 0,
+        tienda_identificada=False,
+        busqueda_manual=True,
+        busqueda_faq=True,
+        max_intent_tipo_incidencia = 3,
+        problem_identified = False,
+        escalate_to_supervisor=False,
+        #incident_type_confirmed = True,
+        #incident_type = "balanza",
+        #authenticated=True,
+        #incident_user_name = "Javier",
+        #incident_last_name = "Guerra",
+        #employee_email = "javier.guerra@gmail.com",
+        #incident_store_name = "Durango",
+        #incident_department = "Pescadería",
 
         # Identificación
         session_id=session_id,

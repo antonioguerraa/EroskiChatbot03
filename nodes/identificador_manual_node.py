@@ -42,7 +42,268 @@ Responde solo con "modificar" o "continuar".
         self.extraccion_prompt = None  # Se construye dinámicamente en execute porque depende de tiendas
 
 
+
     async def execute(self, state: EroskiState) -> Command:
+        print("👹🏅🏅RecogerDatosEmpleadoNode simplificado con control de intentos🏅🏅👹")
+
+        messages = state.get("messages", [])
+        ultimo_msg = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        if not ultimo_msg:
+            return self._respuesta_ai("Hola, ¿cómo te llamas?")
+
+        mensaje_usuario = ultimo_msg.content.strip()
+
+        if state.get("modificaciones_pendientes"):
+            return self._pending_confirmation(state, mensaje_usuario)
+
+        if not self.tiendas:
+            self.tiendas = await self._cargar_tiendas()
+
+        datos_actuales = {
+            "nombre": state.get("incident_user_name"),
+            "apellido": state.get("incident_last_name"),
+            "tienda": state.get("incident_store_name"),
+            "seccion": state.get("incident_department"),
+            "tienda_tentativa": state.get("tienda_tentativa"),
+        }
+
+        intento_tienda = state.get("intento_tienda", 0)
+        intentos_identificar_usuario = state.get("intentos_identificar_usuario", 0)
+
+        print(f"👹intento_tienda: {intento_tienda}")
+        datos_extraidos = self._llm_extraccion(
+            datos_actuales,
+            mensaje_usuario,
+            intentos_identificar_usuario,
+            intento_tienda
+        )
+
+        nuevo_estado = state.copy()
+        nuevo_estado["last_activity"] = datetime.now()
+        nuevo_estado["intentos_identificar_usuario"] = intentos_identificar_usuario + 1
+
+        if isinstance(datos_extraidos, Command):
+            return datos_extraidos
+
+        tienda_llm = datos_extraidos.get("tienda")
+        tienda_tentativa = datos_extraidos.get("tienda_tentativa")
+        tienda_identificada = tienda_llm in self.tiendas if tienda_llm else False
+
+        # Actualización de campos extraídos
+        if datos_extraidos.get("nombre"):
+            nuevo_estado["incident_user_name"] = datos_extraidos["nombre"]
+        if datos_extraidos.get("apellido"):
+            nuevo_estado["incident_last_name"] = datos_extraidos["apellido"]
+        if datos_extraidos.get("seccion"):
+            nuevo_estado["incident_department"] = datos_extraidos["seccion"]
+        if datos_extraidos.get("authenticated"):
+            print(f"authenticated: {datos_extraidos['authenticated']}")
+            nuevo_estado["Authenticated"] = datos_extraidos["authenticated"]
+            
+
+        print(f"👹tienda_llm: {tienda_llm}, \
+                \ntienda_identificada: {tienda_identificada}, \
+                \nintento_tienda: {intento_tienda}, \
+                \ntienda_tentativa: {tienda_tentativa},\
+                \ntienda_tentativa: {tienda_tentativa},\
+                \nauthenticated: {datos_extraidos['authenticated']}, \
+                \nrespuesta: {datos_extraidos['respuesta']}")
+        
+
+
+
+
+
+
+        # 🚨 Control de tienda tentativa e intentos
+        if not tienda_llm and tienda_tentativa:
+            intento_tienda += 1
+            print("")
+            nuevo_estado["intento_tienda"] = intento_tienda
+            nuevo_estado["tienda_tentativa"] = tienda_tentativa
+
+            if intento_tienda >= 3:
+                nuevo_estado["incident_store_name"] = tienda_tentativa
+                nuevo_estado["tienda_identificada"] = False
+                nuevo_estado["tienda_tentativa"] = tienda_tentativa
+
+                # ⚠️ Forzamos autenticación si ya están todos los campos
+                if nuevo_estado.get("incident_user_name") and nuevo_estado.get("incident_last_name") and nuevo_estado.get("incident_department"):
+                    nuevo_estado["authenticated"] = True
+
+                return Command(update={
+                    **nuevo_estado,
+                    "messages": [AIMessage(content=datos_extraidos.get("respuesta", f"He guardado la tienda '{tienda_llm}' como válida. Vamos ahora con la incidencia."))],
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True
+                })
+
+        elif tienda_llm and tienda_identificada:
+            nuevo_estado["incident_store_name"] = tienda_llm
+            nuevo_estado["tienda_identificada"] = True
+            nuevo_estado["tienda_tentativa"] = None
+            nuevo_estado["intento_tienda"] = 0
+
+        
+        # ✅ Si ya tenemos todos los datos, autenticamos
+        if (
+            nuevo_estado.get("incident_user_name")
+            and nuevo_estado.get("incident_last_name")
+            and nuevo_estado.get("incident_department")
+            and nuevo_estado.get("incident_store_name")
+        ):
+            nuevo_estado["authenticated"] = True
+
+        return Command(update={
+            **nuevo_estado,
+            "messages": [AIMessage(content=datos_extraidos.get("respuesta", "Gracias. Vamos ahora con la incidencia."))],
+            "current_node": "identificar_incidencia",
+            "awaiting_user_input": True
+        })
+
+
+
+    async def execute_kk2(self, state: EroskiState) -> Command:
+        print("👹🏅🏅RecogerDatosEmpleadoNode🏅🏅👹")
+        messages = state.get("messages", [])
+        ultimo_msg = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        if not ultimo_msg:
+            return self._respuesta_ai("Hola, ¿cómo te llamas?")
+
+        mensaje_usuario = ultimo_msg.content.strip()
+
+        if state.get("modificaciones_pendientes"):
+            print(f"modifaciones: {state.get('modificaciones_pendientes')}")
+            return self._pending_confirmation(state, mensaje_usuario)
+
+        #se cargan las tiendas de la base de datos.
+        if not self.tiendas:
+            self.tiendas = await self._cargar_tiendas()
+
+        # datos recopilados hasta ahora
+        datos_actuales = {
+            "nombre": state.get("incident_user_name"),
+            "apellido": state.get("incident_last_name"),
+            "tienda": state.get("incident_store_name"),
+            "seccion": state.get("incident_department"),
+            "tienda_tentativa": state.get("tienda_tentativa"),
+            
+        }
+
+        intencion_chain = self.intencion_prompt | self.llm
+        try:
+            intencion_response = await intencion_chain.ainvoke({
+                "datos_actuales": json.dumps(datos_actuales, ensure_ascii=False),
+                "mensaje_usuario": mensaje_usuario,
+            })
+            intencion = intencion_response.content.strip().lower()
+            print(f"👹intencion: {intencion}")
+        except Exception as e:
+            self.logger.warning(f"❌ Error detectando intención: {e}")
+            intencion = "continuar"
+
+        nuevo_estado = state.copy()
+        nuevo_estado["last_activity"] = datetime.now()
+        intento_tienda = nuevo_estado.get("intento_tienda",0)
+        intentos_identificar_usuario = nuevo_estado.get("intentos_identificar_usuario",0)
+        datos_extraidos = self._llm_extraccion(datos_actuales, 
+                                               mensaje_usuario,
+                                               intentos_identificar_usuario,
+                                               intento_tienda,
+                                               )
+        nuevo_estado["intentos_identificar_usuario"] = intentos_identificar_usuario + 1
+
+        if isinstance(datos_extraidos, Command):
+            return datos_extraidos
+
+
+        print(f"👹datos_extraidos: {datos_extraidos}")
+        resultado_confirmacion = self._detectar_cambios(state, datos_extraidos)
+        print(f"👹resultado_confirmacion: {resultado_confirmacion}")
+
+        if isinstance(resultado_confirmacion, Command):
+            return resultado_confirmacion
+
+        if any(valor is not None for valor in datos_extraidos.values()):
+            return self._actualizar_estado(nuevo_estado, datos_extraidos)
+
+        if intencion == "modificar":
+            if datos_extraidos.get("nombre"):
+                nuevo_estado["incident_user_name"] = datos_extraidos["nombre"]
+            if datos_extraidos.get("apellido"):
+                nuevo_estado["incident_last_name"] = datos_extraidos["apellido"]
+            if datos_extraidos.get("tienda") and datos_extraidos["tienda"] in self.tiendas:
+                nuevo_estado["incident_store_name"] = datos_extraidos["tienda"]
+            if datos_extraidos.get("seccion"):
+                nuevo_estado["incident_department"] = datos_extraidos["seccion"]
+
+            resumen = (
+                f"✅ He actualizado tus datos:\n\n"
+                f"👤 {nuevo_estado.get('incident_user_name', 'No especificado')} {nuevo_estado.get('incident_last_name', '')}\n"
+                f"🏬 Tienda: {nuevo_estado.get('incident_store_name', 'No especificada')}\n"
+                f"🧭 Sección: {nuevo_estado.get('incident_department', 'No especificada')}\n\n"
+                "¿Es correcto? ¿Quieres modificar algo más?"
+            )
+            return Command(update={
+                "messages": [AIMessage(content=resumen)],
+                "current_node": "identificar_incidencia",
+                "authenticated": False,
+                "awaiting_user_input": True
+            })
+
+        elif intencion == "continuar":
+            campos_faltantes = []
+            if not nuevo_estado.get("incident_user_name"):
+                campos_faltantes.append("tu nombre")
+            if not nuevo_estado.get("incident_last_name"):
+                campos_faltantes.append("tu apellido")
+            if not nuevo_estado.get("incident_store_name"):
+                campos_faltantes.append("la tienda donde trabajas")
+            if not nuevo_estado.get("incident_department"):
+                campos_faltantes.append("tu sección")
+
+            if not campos_faltantes:
+                resumen = (
+                    f"✅ Te he identificado:\n\n"
+                    f"👤 {nuevo_estado['incident_user_name']} {nuevo_estado['incident_last_name']}\n"
+                    f"🏬 Tienda: {nuevo_estado['incident_store_name']}\n"
+                    f"🧭 Sección: {nuevo_estado['incident_department']}\n\n"
+                    "¿En qué puedo ayudarte?"
+                )
+                return Command(update={
+                    "messages": [AIMessage(content=resumen)],
+                    "current_node": "identificar_incidencia",
+                    "authenticated": False,
+                    "awaiting_user_input": True
+                })
+            else:
+                self.logger.info(f"ℹ️ Faltan aún los siguientes datos: {campos_faltantes}")
+                pregunta = "¿Podrías decirme " + " y ".join(campos_faltantes) + "?"
+                return Command(update={
+                    "messages": [AIMessage(content=pregunta)],
+                    "current_node": "identificar_incidencia",
+                    "authenticated": False,
+                    "awaiting_user_input": True
+                })
+
+        else:
+            self.logger.warning(f"Respuesta de intención inesperada: {intencion}")
+            return Command(update={
+                "messages": [AIMessage(content="No he entendido si quieres modificar tus datos o continuar. ¿Podrías aclararlo?")],
+                "current_node": "identificar_incidencia",
+                "authenticated": False,
+                "awaiting_user_input": True
+            })
+
+
+#========================================
+#========================================
+#========================================
+
+
+
+
+    async def execute_kk(self, state: EroskiState) -> Command:
         # 1. Obtener mensaje del usuario
         print("👹RecogerDatosEmpleadoNode👹")
         messages = state.get("messages", [])
@@ -65,8 +326,8 @@ Responde solo con "modificar" o "continuar".
             self.tiendas = await self._cargar_tiendas()
 
         datos_actuales = {
-            "nombre": state.get("employee_name"),
-            "apellido": state.get("employee_lastname"),
+            "nombre": state.get("incident_user_name"),
+            "apellido": state.get("incident_last_name"),
             "tienda": state.get("incident_store_name"),
             "seccion": state.get("incident_department"),
         }
@@ -86,11 +347,48 @@ Responde solo con "modificar" o "continuar".
 
         
         nuevo_estado = state.copy()
-        campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
+        campos = ["incident_user_name", "incident_last_name", "incident_store_name", "incident_department"]
         for campo in campos:
             print(f"👹campo1: {campo} - {nuevo_estado.get(campo, 'No especificado')}")
         nuevo_estado["last_activity"] = datetime.now()
         datos_extraidos = self._llm_extraccion(datos_actuales, mensaje_usuario)
+        # ⚠️ Si el extractor devuelve un Command, lo devolvemos directamente
+        if isinstance(datos_extraidos, Command):
+            return datos_extraidos
+
+
+        # Intentos acumulados si no se identificó la tienda
+        intento_tienda = state.get("intento_tienda", 0)
+        tienda_llm = datos_extraidos.get("tienda")
+
+        tienda_identificada = tienda_llm in self.tiendas if tienda_llm else False
+
+        if tienda_llm and not tienda_identificada:
+            intento_tienda += 1
+            if intento_tienda >= 3:
+                return Command(update={
+                    "incident_store_name": tienda_llm,
+                    "tienda_identificada": False,
+                    "incident_store_name_temp": None,
+                    "intento_tienda": intento_tienda,
+                    "messages": [AIMessage(content=f"No he encontrado la tienda '{tienda_llm}' en la base de datos, pero la he guardado igualmente.")],
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True,
+                    "authenticated": False
+                })
+            else:
+                return Command(update={
+                    "incident_store_name_temp": tienda_llm,
+                    "intento_tienda": intento_tienda,
+                    "messages": [AIMessage(content="No he podido identificar tu tienda. ¿Podrías escribir el nombre exacto, por ejemplo: Hipermercado Bilbondo?")],
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True,
+                    "authenticated": False
+                })
+
+
+
+
         print(f"👹datos_extraidos: {datos_extraidos}")
         # 3. Detectar cambios en el estado (si hay alguna
         resultado_confirmacion = self._detectar_cambios(state, datos_extraidos)
@@ -107,13 +405,13 @@ Responde solo con "modificar" o "continuar".
             
         if intencion == "modificar":
             # 4. Actualizar estado con los datos extraídos
-            if datos_extraidos.get("nombre"): nuevo_estado["employee_name"] = datos_extraidos["nombre"]
-            if datos_extraidos.get("apellido"): nuevo_estado["employee_lastname"] = datos_extraidos["apellido"]
+            if datos_extraidos.get("nombre"): nuevo_estado["incident_user_name"] = datos_extraidos["nombre"]
+            if datos_extraidos.get("apellido"): nuevo_estado["incident_last_name"] = datos_extraidos["apellido"]
             if datos_extraidos.get("tienda"): nuevo_estado["incident_store_name"] = datos_extraidos["tienda"]
             if datos_extraidos.get("seccion"): nuevo_estado["incident_department"] = datos_extraidos["seccion"]
             resumen = (
                     f"✅ He actualizado tus datos:\n\n"
-                    f"👤 {nuevo_estado.get('employee_name', 'No especificado')} {nuevo_estado.get('employee_lastname', '')}\n"
+                    f"👤 {nuevo_estado.get('incident_user_name', 'No especificado')} {nuevo_estado.get('incident_last_name', '')}\n"
                     f"🏬 Tienda: {nuevo_estado.get('incident_store_name', 'No especificada')}\n"
                     f"🧭 Sección: {nuevo_estado.get('incident_department', 'No especificada')}\n\n"
                     "¿Es correcto? ¿Quieres modificar algo más?"
@@ -127,13 +425,13 @@ Responde solo con "modificar" o "continuar".
         elif intencion == "continuar":
             # Verificar si datos completos
             print(f"👹intencion: {intencion}")
-            campos = ["employee_name", "employee_lastname", "incident_store_name", "incident_department"]
+            campos = ["incident_user_name", "incident_last_name", "incident_store_name", "incident_department"]
             for campo in campos:
                 print(f"👹campo: {campo} - {nuevo_estado.get(campo, 'No especificado')}")
             if all(nuevo_estado.get(campo) for campo in campos):
                 resumen = (
                     f"✅ Te he identificado:\n\n"
-                    f"👤 {nuevo_estado['employee_name']} {nuevo_estado['employee_lastname']}\n"
+                    f"👤 {nuevo_estado['incident_user_name']} {nuevo_estado['incident_last_name']}\n"
                     f"🏬 Tienda: {nuevo_estado['incident_store_name']}\n"
                     f"🧭 Sección: {nuevo_estado['incident_department']}\n\n"
                     "¿En qué puedo ayudarte?"
@@ -146,8 +444,8 @@ Responde solo con "modificar" o "continuar".
                 })
             else:
                 faltan = []
-                if not nuevo_estado.get("employee_name"): faltan.append("tu nombre")
-                if not nuevo_estado.get("employee_lastname"): faltan.append("tu apellido")
+                if not nuevo_estado.get("incident_user_name"): faltan.append("tu nombre")
+                if not nuevo_estado.get("incident_last_name"): faltan.append("tu apellido")
                 if not nuevo_estado.get("incident_store_name"): faltan.append("la tienda donde trabajas")
                 if not nuevo_estado.get("incident_department"): faltan.append("tu sección")
                 print(f"Faltan datos: {faltan}")
@@ -201,36 +499,66 @@ Responde solo con "modificar" o "continuar".
         """Descripción del actor para trazas/logs"""
         return "Nodo encargado de recoger los datos básicos del empleado"
     
-    def _llm_extraccion(self, datos_actuales: Dict[str, Optional[str]], mensaje_usuario: str) -> dict:
+    def _llm_extraccion(self, datos_actuales: Dict[str, Optional[str]], 
+                        mensaje_usuario: str, 
+                        intentos_identificacion: int = 0,
+                        intento_tienda: int =0) -> dict:
         
         class datos_salida(BaseModel):
             nombre: Optional[str] = Field(description="Nombre de la persona")
             apellido: Optional[str] = Field(description="Apellido de la persona")
             tienda: Optional[str] = Field(description="Tienda donde se produce la incidencia")
+            tienda_tentativa: Optional[str] = Field(description="Tienda proporcinada por el usuario y que no se encuentra en la lista de tiendas")
             seccion: Optional[str] = Field(description="Departamento donde se produce la incidencia")
+            respuesta: Optional[str] = Field(description="Respuesta que hay que devolver al usuario")
+            authenticated: bool = Field(description="Indica si tenemos los valores en los cuatro campos")
+        
         
         parser = JsonOutputParser(pydantic_object=datos_salida)
         datos_actuales_text = "\n".join([f"- {k}: {v}" for k, v in datos_actuales.items()])
-
+        
         system_prompt = f"""
         Eres un asistente de Eroski. Tu tarea es extraer hasta 4 campos del mensaje del usuario:
 
         - nombre
         - apellido
+        - seccion (Carnicería, Pescadería, Panadería, Caja, etc.)
         - tienda (de esta lista: {', '.join(self.tiendas[:20])})
-        - seccion (Carnicería, Pescadería, Panadería, Caja, etc)
 
-        Los datos actuales del usuario son:
+        Si has identificado una tienda pero no está en la lista, guarda este dato en el campo `tienda_tentativa`.
+        Si tienes los 4 campos (nombre, apellido, sección y tienda), pon el valor `authenticated` a True
+        
+        === DATOS ACTUALES DEL USUARIO ===
         {datos_actuales_text}
 
-        INSTRUCCIONES:
-        - Solo actualiza un campo si el usuario lo menciona de forma clara y directa.
-        - Si no menciona un dato explícitamente, déjalo como null.
-        - No infieras. Por ejemplo, si el usuario dice "tengo un problema con el TPV", no asumas que es Caja.
-        - Si el usuario quiere modificar un dato que ya tenía, actualízalo. Si no lo menciona, mantenlo como estaba.
+        === PARÁMETROS DE CONTEXTO ===
+        - intentos_identificacion: {intentos_identificacion}
+        - intento_tienda: {intento_tienda}
 
-        DEVUELVE:
-        Un JSON plano con los campos: nombre, apellido, tienda, seccion.
+        === INSTRUCCIONES DE EXTRACCIÓN ===
+        - Solo actualiza un campo si el usuario lo menciona clara y directamente.
+        - Si no lo menciona, déjalo como null.
+        - No infieras. Por ejemplo, "problema con el TPV" no implica Caja.
+        - Si el usuario menciona un dato distinto al que ya teníamos registrado, considera que quiere modificarlo y actualízalo.
+
+        === INSTRUCCIONES PARA LA RESPUESTA AL USUARIO ===
+        - Si has actualizado algún dato respecto a los datos actuales, infórmaselo de forma clara y amable.
+            Ejemplo: "He actualizado tu sección a Panadería."
+        - Si tienes los 4 campos (nombre, apellido, sección y tienda), da las gracias, muestra los datos identificados y di que pasas a recoger la incidencia.
+        - También debes pasar a recoger la incidencia si la tienda no está en la lista, pero ya se ha proporcionado varias veces y la estamos aceptando igualmente.
+            En ese caso, muestra los datos y continúa con: "Gracias, ya tengo tus datos. Vamos ahora con la incidencia."
+        - Si faltan campos, pide que los proporcione.
+        - Si la tienda identificada no está en la lista, indícaselo al usuario:
+            - Si `intento_tienda` es 1 o 2 → Pide amablemente que vuelva a indicar la tienda.
+            - Si `intento_tienda` es 3 → Guarda la tienda proporcionada como `tienda_tentativa` y avisa que no se encontró, pero se usará igualmente. En este pon en la variable ´tienda´  el valor de ´tienda_tentativa´
+        - Si `tienda_tentativa` es igual a la tienda proporcionada por el usuario en este mensaje, y esta tienda **no está en la lista de tiendas válidas**, avísale educadamente que esa tienda no la encontrabas previamente.
+        - Si `tienda_tentativa` no es nula, es distinta de la tienda proporcionada en este mensaje, **y la nueva tienda tampoco está en la lista de tiendas válidas**, dile que esa nueva tienda tampoco la encuentras.
+
+        
+
+
+        === FORMATO DE SALIDA ===
+        Devuelve un JSON con los campos: nombre, apellido, tienda, tienda_tentativa, seccion, respuesta, y authenticated.
         """
 
         extraccion_prompt = ChatPromptTemplate.from_messages([
@@ -244,7 +572,17 @@ Responde solo con "modificar" o "continuar".
             data = respuesta
         except Exception as e:
             self.logger.warning(f"❌ Error interpretando mensaje: {e}")
-            return self._respuesta_ai("No he entendido tu mensaje. ¿Podrías repetirlo más claramente?")
+            # Detectar errores de filtrado de contenido (Azure OpenAI)
+            if hasattr(e, "args") and "content_filter" in str(e.args[0]).lower():
+                mensaje = (
+                    "Tu mensaje ha sido bloqueado por las políticas del sistema. "
+                    "¿Podrías reformularlo con otras palabras, por favor?"
+                )
+            else:
+                mensaje = "No he entendido tu mensaje. ¿Podrías repetirlo más claramente?"
+
+            return self._respuesta_ai(mensaje)
+            
         # Si `self.llm` devuelve texto plano JSON, conviértelo:
         return data
     
@@ -252,8 +590,8 @@ Responde solo con "modificar" o "continuar".
         """Actualiza el estado con los datos extraídos con el LLM si algún campo estaba vacío y ahora puede rellenarse."""
 
         mapeo = {
-            "employee_name": "nombre",
-            "employee_lastname": "apellido",
+            "incident_user_name": "nombre",
+            "incident_last_name": "apellido",
             "incident_store_name": "tienda",
             "incident_department": "seccion"
         }
@@ -263,6 +601,8 @@ Responde solo con "modificar" o "continuar".
             for campo_estado, campo_llm in mapeo.items()
             if not estado.get(campo_estado) and datos_extraidos.get(campo_llm)
         }
+
+
 
         faltan = [
             campo_llm
@@ -321,8 +661,8 @@ Responde solo con "modificar" o "continuar".
     def _detectar_cambios(self, estado: EroskiState, datos_extraidos: dict) -> Optional[Command] | Dict:
         # Obtener datos actuales
         mapeo = {
-            "employee_name": "nombre",
-            "employee_lastname": "apellido",
+            "incident_user_name": "nombre",
+            "incident_last_name": "apellido",
             "incident_store_name": "tienda",
             "incident_department": "seccion"
         }
@@ -339,8 +679,8 @@ Responde solo con "modificar" o "continuar".
         }"""
 
         etiquetas_legibles = {
-            "employee_name": "nombre",
-            "employee_lastname": "apellido",
+            "incident_user_name": "nombre",
+            "incident_last_name": "apellido",
             "incident_store_name": "tienda",
             "incident_department": "departamento"
         }

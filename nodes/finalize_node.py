@@ -164,15 +164,15 @@ class FinalizeNode(BaseNode):
             "satisfaction_score": state.get("satisfaction_score"),
             "automated_resolution": state.get("automated_resolution", False),
             "user_info": {
-                "name": state.get("employee_name", "Usuario"),
+                "name": state.get("incident_user_name", "Usuario"),
                 "email": state.get("employee_email", "No proporcionado"),
-                "store": state.get("store_name", "No identificada"),
+                "store": state.get("incident_store_name", "No identificada"),
                 "department": state.get("incident_department", "No especificado")
             },
             "incident_info": {
                 "type": state.get("incident_type", "No identificado"),
                 "description": state.get("incident_description", "No proporcionada"),
-                "code": state.get("incident_code", "No asignado"),
+                "code": state.get("incident_id", "No asignado"),
                 "equipment": state.get("affected_equipment", "No especificado")
             },
             "process_info": {
@@ -298,8 +298,8 @@ class FinalizeNode(BaseNode):
             "session_metrics": session_metrics,
             "employee_info": {
                 "email": state.get("employee_email", ""),
-                "name": state.get("employee_name", ""),
-                "store": state.get("store_name", ""),
+                "name": state.get("incident_user_name", ""),
+                "store": state.get("incident_store_name", ""),
                 "department": state.get("incident_department", "")
             },
             "incident_info": {
@@ -407,7 +407,7 @@ Si tienes unos segundos, nos ayudaría mucho conocer tu experiencia para mejorar
         """
         self.logger.error(f"💥 Error en finalización: {error_message}")
         
-        user_name = state.get("employee_name", "Usuario")
+        user_name = state.get("incident_user_name", "Usuario")
         incident_code = state.get("incident_code", "No disponible")
         
         error_response = f"""⚠️ **FINALIZACIÓN CON INCIDENCIAS**
@@ -519,9 +519,9 @@ if __name__ == "__main__":
             "incident_type": "balanza",
             "incident_code": "ER-2024",
             "incident_description": "Problema con etiquetado de precios",
-            "employee_name": "María García",
+            "incident_user_name": "María García",
             "employee_email": "maria.garcia@eroski.es",
-            "store_name": "Eroski Bilbao Centro",
+            "incident_store_name": "Eroski Bilbao Centro",
             "incident_department": "Pescadería",
             "automated_resolution": False,
             "satisfaction_score": 4,

@@ -3,6 +3,13 @@ Nodo de búsqueda de soluciones para el chatbot de soporte técnico de Eroski.
 Este nodo identifica problemas específicos y proporciona soluciones desde múltiples fuentes.
 """
 
+import sys
+import os
+
+# Añade la raíz del proyecto al sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+
 import json
 import logging
 from datetime import datetime
@@ -13,12 +20,13 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import numpy as np
 from langchain.agents import create_react_agent, AgentExecutor
-from langchain.tools import Tool
+from langchain_core.tools import Tool
 from langchain.prompts import PromptTemplate
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.schema import BaseMessage
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langgraph.types import Command
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from models.eroski_state import EroskiState
@@ -29,6 +37,13 @@ from utils.incident_manager import get_incident_manager
 from nodes.verifiers.agent_output_llm_verifier import AgentOutputLLMVerifier
 from langchain_core.prompts import ChatPromptTemplate
 
+from langchain_core.runnables import RunnableSequence
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import PromptTemplate
+from models.indentificacion_solucion import IdentificacionSolucion
+from models.unified_solution_response import UnifiedSolutionResponse
+from utils.cargar_incidentes import EroskiIncidentsManager
+
 
 
 # Configuración de logging
@@ -38,6 +53,9 @@ logger = logging.getLogger(__name__)
 # MODELOS PYDANTIC PARA STRUCTURED OUTPUT
 # =============================================================================
 
+class FAQProblemInput(BaseModel):
+    mensaje_usuario: str = Field(..., description="Mensaje original del usuario con el problema")
+    tipo_incidencia: str = Field(..., description="Tipo de incidencia, por ejemplo: TPV, caja, báscula")
 
 class ProblemIdentificationResult(BaseModel):
     """Modelo para la respuesta de identificación de problemas."""
@@ -210,84 +228,12 @@ Palabras clave: {result['palabras_clave']}
         if self._connection and not self._connection.closed:
             self._connection.close()
 
-class EroskiIncidentsManager:
-    """Maneja la carga y búsqueda en el archivo JSON de incidencias frecuentes."""
-    
-    def __init__(self, json_path: str = "data/eroski_incidents.json"):
-        self.json_path = Path(json_path)
-        self.incidents_data = self._load_incidents()
-    
-    def _load_incidents(self) -> Dict[str, Any]:
-        """Carga el archivo JSON de incidencias."""
-        try:
-            if not self.json_path.exists():
-                logger.warning(f"Archivo de incidencias no encontrado: {self.json_path}")
-                return {"incident_types": {}}
-            
-            with open(self.json_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error cargando incidencias: {e}")
-            return {"incident_types": {}}
-    
-    def get_ejemplos_frecuentes(self, incident_type: str, limit: int = 3) -> List[str]:
-        """
-        Obtiene ejemplos de problemas frecuentes para un tipo de incidencia.
-        
-        Args:
-            incident_type: Tipo de incidencia (ej: "balanza")
-            limit: Número máximo de ejemplos
-            
-        Returns:
-            List[str]: Lista de problemas frecuentes
-        """
-        try:
-            incident_data = self.incidents_data.get("incident_types", {}).get(incident_type, {})
-            problemas = incident_data.get("problemas", {})
-            
-            return list(problemas.keys())[:limit]
-        except Exception as e:
-            logger.error(f"Error obteniendo ejemplos: {e}")
-            return []
-    
-    def buscar_solucion_json(self, incident_type: str, problema: str) -> Optional[Tuple[str, float]]:
-        """
-        Busca una solución en el JSON para un problema específico.
-        
-        Args:
-            incident_type: Tipo de incidencia
-            problema: Descripción del problema
-            
-        Returns:
-            Tuple[str, float]: (solución, confidence) o None si no encuentra
-        """
-        try:
-            incident_data = self.incidents_data.get("incident_types", {}).get(incident_type, {})
-            problemas = incident_data.get("problemas", {})
-            
-            # Búsqueda exacta
-            if problema in problemas:
-                return problemas[problema], 1.0
-            
-            # Búsqueda por similitud de texto simple
-            problema_lower = problema.lower()
-            for key, solucion in problemas.items():
-                if problema_lower in key.lower() or key.lower() in problema_lower:
-                    # Calcular confidence básico basado en longitud de coincidencia
-                    overlap = len(set(problema_lower.split()) & set(key.lower().split()))
-                    total_words = len(set(problema_lower.split()) | set(key.lower().split()))
-                    confidence = overlap / total_words if total_words > 0 else 0
-                    
-                    if confidence >= 0.5:
-                        return solucion, confidence
-            
-            return None
-        except Exception as e:
-            logger.error(f"Error buscando en JSON: {e}")
-            return None
 
-class ProblemIdentificationTool:
-    """Tool para identificar problemas específicos usando LLM con JSON output estructurado."""
+class FAQ_ProblemIdentificationTool:
+    """Tool para identificar problemas específicos usando LLM con JSON output estructurado.
+    Utiliza como entrada un archivo JSON con las problemas y soluciones asociadas más frecuentes.
+    
+    """
     
     def __init__(self, incidents_manager: EroskiIncidentsManager):
         self.llm = get_llm()
@@ -327,9 +273,10 @@ Solo responde con el JSON puro sin texto adicional.""",
             partial_variables={"format_instructions": self.parser.get_format_instructions()}
         )
     
-    def identify_problem(self, user_message: str, incident_type: str) -> Dict[str, Any]:
+    def faq_problem(self, user_message: str, incident_type: str) -> Dict[str, Any]:
         """
         Identifica el problema específico del usuario usando LLM con JSON estructurado.
+        Utiliza un archivo JSON con problemas y soluciones frecuentes predefinidos.
         
         Args:
             user_message: Mensaje del usuario
@@ -341,6 +288,8 @@ Solo responde con el JSON puro sin texto adicional.""",
         try:
             # Obtener ejemplos del JSON
             ejemplos = self.incidents_manager.get_ejemplos_frecuentes(incident_type, 5)
+            
+            # Formatear ejemplos para incluir en el prompt
             ejemplos_text = "\n".join([f"• {ej}" for ej in ejemplos]) if ejemplos else "No hay ejemplos disponibles"
             
             # Formatear prompt
@@ -444,19 +393,29 @@ class BuscarSolucionNode:
     """
     
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.knowledge_base = EroskiKnowledgeBase()
         self.incidents_manager = EroskiIncidentsManager()
-        self.problem_tool = ProblemIdentificationTool(self.incidents_manager)
+        self.faq_problem_tool = FAQ_ProblemIdentificationTool(self.incidents_manager)
         self._incident_manager = None
         self.confirmation_tool = ConfirmationTool()
         self.llm = get_llm()
         self.max_attempts = 3
         self.node_name = "buscar_solucion"
+        self.parser_json = JsonOutputParser()
+        self.parser_str = StrOutputParser()
         
         
         # Configurar herramientas para el agente
         self.tools = self._setup_tools()
+        self.tools_manual = self._setup_tools_manual()
+        self.tools_faq = self._setup_tools_faq()
+        
         self.agent = self._setup_agent()
+        #self.agent_manual = self._setup_agent_manual()
+        self.agent_faq = self._setup_agent_faq()
+        self.identificacion_solucion_chain = self._setup_identificacion_solucion_chain()
+        self.solution_fusion_chain = self._setup_solution_fusion_chain()
 
         self.llm_extra_info_prompt = ChatPromptTemplate.from_messages([
     ("system", """Eres un experto en soporte técnico.
@@ -478,13 +437,235 @@ Mensaje del usuario: "{user_message}"
 Responde únicamente con "si" o "no".
 """)
 ])
+    
+    async def execute(self, state: EroskiState) -> Command:
+        """
+        Método execute principal para LangGraph que maneja todo el flujo de búsqueda de soluciones.
+        
+        Args:
+            state: Estado actual del chatbot
+            
+        Returns:
+            Command: Comando con las actualizaciones del estado
+        """
+        logger.info(f"👹Entrada en el nodo {self.__class__.__name__}👹")
+        incident_id = state.get("incident_id", None)
+        logger.info(f"👹Incidente ID: {incident_id}👹")
+        solution_attempts=state.get("solution_attempts", 0)
+
+        if not incident_id:
+            incident_id = get_incident_manager().manage_incident(state)
+        logger.info(f"👹Incidente ID: {incident_id}👹")
+        base_update = {
+            "incident_id": incident_id,
+            "current_node": self.node_name,
+            "last_activity": datetime.now()
+        }
+        try:
+            incident_type = state.get("incident_type")
+            if not incident_type:
+
+                            # Preparar actualización base del estado
+                return Command(update={
+                    **base_update,
+                    "messages": [AIMessage(content="Primero debemos indentificar el tipo de incidencia.")],
+                    "incident_type_confirmed": False
+                })
+            
+            # Manejar evaluación de solución
+            #if state.get("solution_content") and not state.get("solution_found", False):
+
+            #    evaluation_update = self._evaluar_solucion(state)
+            #    self._track_incident_state(state, evaluation_update)
+            #    return Command(update={**base_update, **evaluation_update})
+            
+
+            # Manejar confirmación pendiente
+            if state.get("pending_confirmation", False):
+                confirmation_update = await self._procesar_confirmacion_pendiente(state)
+                if isinstance(confirmation_update, Command):
+                    self._track_incident_state(state, confirmation_update.update)
+                    return Command(update={**base_update, **confirmation_update.update})
+                else:
+                    return Command(update={**base_update, **confirmation_update})
+
+            # Proceso principal de identificación de problemas
+            if not state.get("problem_identified", False):
+                # Obtener último mensaje del usuario
+                last_message = None
+                for msg in reversed(state.get("messages", [])):
+                    if isinstance(msg, HumanMessage):
+                        last_message = msg.content
+                        break
+                
+                if not last_message:
+                    # Primera vez - mostrar ejemplos
+                    response = self._mostrar_ejemplos_frecuentes(state.get("incident_type", ""))
+                    return Command(update={
+                        **base_update,
+                        "messages": state.get("messages", []) + [AIMessage(content=response)],
+                        "awaiting_user_input": True
+                    })
+                
+                # Usar agente para identificar el problema
+                
+                user_history = "\n".join([
+                    f"- {m.content}" for m in state.get("messages", [])[:] if isinstance(m, HumanMessage)
+                ])
+
+                lineas = []
+                for m in state.get("messages", []):
+                    if isinstance(m, HumanMessage):
+                        lineas.append(f"👤 {m.content}")
+                    elif isinstance(m, AIMessage):
+                        lineas.append(f"🤖 {m.content}")
+                historial_formateado = "\n".join(lineas) if lineas else "Sin historial."
+                try:
+
+                    #Lo primero es identificar la solución
+                    result = await self.identificacion_solucion_chain.ainvoke({
+                        "incident_type": state["incident_type"],
+                        "chat_history": historial_formateado})
+                    #Ha identificado el problema                    
+                    if result['problem_identified']:
+                        #Buscamos en el RAG
+                        solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problema'])
+                        #Empezamos a buscar en el json. Primero lo cargamo
+                        problemas_dict = self.incidents_manager.get_problemas_soluciones(incident_type)
+                        agent_response_faq = self.agent_faq.invoke({
+                                                            "problema_identificado": result['problema'],
+                                                            "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)})
+                        
+                        (f"👹 agent_response_faq: {agent_response_faq}")
+                        solution_content_faq = agent_response_faq.get("solucion","No se identificó el problema")
+                        
+                        
+                        if "no se identificó" in solution_content_faq.lower():
+                            solution_content_faq = ""
+                        command = await self._fusionar_soluciones(
+                            manual_solution=solution_content_manual,
+                            faq_solution=solution_content_faq,
+                            problem_description=result['problema'],
+                            solution_attempts=solution_attempts)
+                        
+                        return command
+                    
+                    else:
+                        solution_attempts += 1
+                        return Command(update={
+                            **base_update,
+                            "messages": [
+                                AIMessage(content=result['message_to_user'])
+                            ],
+                            "solution_attempts":solution_attempts,
+                            "awaiting_user_input": True
+                        })
+                        
 
 
+                
+                except Exception as e:
+                    logger.error(f"Error con agente: {e}")
+                    return Command(update={
+                        **base_update,
+                        "messages": [
+                            AIMessage(content="Hubo un problema procesando tu consulta. ¿Podrías describir el problema de forma más específica?")
+                        ],
+                        "awaiting_user_input": True
+                    })
+            
+            # Si llegamos aquí, mantener estado actual
+            return Command(update=base_update)
+            
+        except Exception as e:
+            logger.error(f"Error en buscar_solucion_node: {e}")
+            return Command(update={
+                "current_node": self.node_name,
+                "last_activity": datetime.now(),
+                "messages": state.get("messages", []) + [
+                    AIMessage(content="Lo siento, hubo un error interno. ¿Podrías intentar describir tu problema de nuevo?")
+                ],
+                "awaiting_user_input": True
+            })
+        
+        finally:
+            # Limpiar recursos
+            try:
+                self.knowledge_base.close()
+            except:
+                pass
+    
+
+    
+    def _setup_tools_manual(self) -> List[Tool]:
+        """Configura las herramientas disponibles para el agente."""
+
+        def buscar_manual_wrapper(query: str) -> str:
+            """Wrapper para búsqueda en manuales."""
+            try:
+                return self.knowledge_base.buscar_solucion_rag(query)
+            except Exception as e:
+                return f"Error en búsqueda de manual: {str(e)}"
+        
+        return [
+            Tool(
+                name="buscar_solucion_en_manual",
+                description="""
+                Busca soluciones en los manuales técnicos usando RAG.
+                Input: descripción del problema o palabras clave
+                Output: Texto con las mejores soluciones encontradas
+                """,
+                func=buscar_manual_wrapper
+            )
+        ]
+    
+    def _setup_tools_faq(self) -> List[Tool]:
+        """Configura las herramientas disponibles para el agente.
+            Devuelve una Tool que ejecuta `faq_problem` con validación robusta de input.
+        """
+        
+        def FAQ_problem_wrapper(input_dict: dict) -> str:
+            """Wrapper para la herramienta de identificación de problemas.
+                Envuelve la función self.faq_problem y devuelve un JSON serializado como string.
+            """
+            try:
+                mensaje = input_dict.get("mensaje_usuario", "")
+                incident_type = input_dict.get("tipo_incidencia", "")
+                
+                logger.info(f"📥 Ejecutando FAQ Tool con mensaje='{mensaje}' | tipo_incidencia='{incident_type}'")
+
+                result: Dict[str, Any] = self.faq_problem_tool.faq_problem(mensaje, incident_type)
+
+                return json.dumps(result, indent=2, ensure_ascii=False)
+
+            except Exception as e:
+                logger.error(f"❌ Error en FAQ Tool: {e}")
+                fallback = {
+                    "error": f"Error interno: {str(e)}",
+                    "problema": "Error interno",
+                    "confidence": 0.0,
+                    "keywords": [],
+                    "solucion": "",
+                    "similar_a_ejemplo": False,
+                    "requiere_mas_info": True
+                }
+                return json.dumps(fallback, indent=2, ensure_ascii=False)
+
+        return [
+            Tool(
+                name="faq_problem",
+                description="""
+                Identifica el problema específico del usuario usando LLM con JSON estructurado.
+                Requiere: mensaje_usuario y tipo_incidencia.
+                """,
+                func=FAQ_problem_wrapper,
+                args_schema=FAQProblemInput
+        )]
     
     def _setup_tools(self) -> List[Tool]:
         """Configura las herramientas disponibles para el agente."""
         
-        def identify_problem_wrapper(input_str: str) -> str:
+        def FAQ_problem_wrapper(input_str: str) -> str:
             """Wrapper para la herramienta de identificación de problemas."""
             try:
                 # Parsear input (formato: "mensaje|incident_type")
@@ -498,7 +679,7 @@ Responde únicamente con "si" o "no".
                     }, ensure_ascii=False, indent=2)
                 
                 mensaje, incident_type = parts
-                result = self.problem_tool.identify_problem(mensaje.strip(), incident_type.strip())
+                result = self.faq_problem_tool.faq_problem(mensaje.strip(), incident_type.strip())
                 return json.dumps(result, ensure_ascii=False, indent=2)
             except Exception as e:
                 error_result = {
@@ -521,14 +702,14 @@ Responde únicamente con "si" o "no".
         
         return [
             Tool(
-                name="identify_problem",
+                name="faq_problem",
                 description="""
                 Identifica el problema específico del usuario usando LLM con JSON estructurado. 
                 Input: 'mensaje_usuario|tipo_incidencia'
                 Output: JSON con problema, confidence, keywords, solución y flags adicionales.
                 Confidence >= 0.75 indica alta confianza en la identificación.
                 """,
-                func=identify_problem_wrapper
+                func=FAQ_problem_wrapper
             ),
             Tool(
                 name="buscar_solucion_en_manual",
@@ -558,7 +739,7 @@ Responde únicamente con "si" o "no".
     {user_history}
 
     Tu proceso:
-    1. Si necesitas extraer detalles del problema, puedes usar la herramienta "identify_problem".
+    1. Si necesitas extraer detalles del problema, puedes usar la herramienta "faq_problem".
     2. Si ya tienes una idea razonable, busca directamente soluciones en los manuales o responde con tu conocimiento.
     3. Siempre que des una solución, termina con: **¿Esta solución resuelve tu problema?**
 
@@ -592,6 +773,387 @@ Responde únicamente con "si" o "no".
             max_iterations=5,
             early_stopping_method="generate"
         )
+    
+    async def _fusionar_soluciones(self, manual_solution: str, faq_solution: str, problem_description: str, solution_attempts: int, max_attempts: int = 3) -> Command:
+        """
+        Fusiona soluciones del manual y FAQ y genera una respuesta conversacional coherente y estructurada.
+        
+        - Valida si las soluciones están relacionadas con el problema.
+        - Si no lo están, devuelve un mensaje pidiendo más info o escala a un supervisor si se han superado los intentos.
+        - Si al menos una es útil, la incluye y pide confirmación.
+        
+        Returns:
+            Command(update={...})
+        """
+        try:
+            fusion_chain = self._setup_solution_fusion_chain()
+            fusion = await fusion_chain.ainvoke({
+                "manual_solution": manual_solution.strip(),
+                "faq_solution": faq_solution.strip(),
+                "problem_description": problem_description.strip()
+            })
+
+
+            msg = fusion['message_to_user']+'\n\n'+ fusion['solution_content']
+            
+            if fusion['requires_confirmation']:
+                
+                update = {
+                    "messages": [AIMessage(content=msg)],
+                    "solution_content": fusion['solution_content'],
+                    "pending_confirmation": fusion['requires_confirmation'],
+                    "awaiting_user_input": True,
+                    "solution_validation_pending":True
+                }
+            else:
+                update = {
+                    "messages": [AIMessage(content=msg)],
+                    "solution_content": fusion['solution_content'],
+                    "pending_confirmation": fusion['requires_confirmation'],
+                    "awaiting_user_input": True,
+                }
+
+
+            # Si no hay solución útil y ya se intentó antes → escalar
+            if not fusion['solution_content'] and solution_attempts >= max_attempts:
+                update.update({
+                    "escalation_needed": True,
+                    "current_node": "escalation",
+                    "awaiting_user_input": False,
+                    "messages": [AIMessage(content="Ya hemos intentado varias opciones sin resolver tu problema. Voy a escalar el caso a un técnico especializado.")]
+                })
+            
+            # Si no hay solución útil pero aún quedan intentos
+            elif not fusion['solution_content']:
+                logger.info("👹 check 2 _fusionar_soluciones")
+                update.update({
+                    "problem_identified": False,
+                    "pending_confirmation": False
+                })
+
+            else:
+                logger.info("👹 check 2 _fusionar_soluciones")
+                # Si hay solución válida, marcar el problema como identificado
+                update.update({
+                    "problem_identified": True,
+                    "problem_description": problem_description
+                })
+
+            logger.info(f"👹update: {update}")
+            return Command(update=update)
+
+        except Exception as e:
+            self.logger.error(f"❌ Error en fusionar_soluciones: {e}")
+            return Command(update={
+                "messages": [AIMessage(content="Hubo un problema procesando la solución. ¿Puedes describir el problema con más detalle?")],
+                "problem_identified": False,
+                "pending_confirmation": False,
+                "awaiting_user_input": True
+            })
+
+    def _setup_solution_fusion_chain(self) -> RunnableSequence:
+        parser = JsonOutputParser(pydantic_object=UnifiedSolutionResponse)
+
+        prompt = PromptTemplate(
+            template="""
+            Eres un asistente técnico de Eroski.
+
+            Ya se ha identificado el problema reportado por el usuario:
+            PROBLEMA DETECTADO: {problem_description}
+
+            Y se han recuperado dos posibles soluciones:
+            - Una desde los manuales técnicos (Manual)
+            - Otra desde un listado de problemas frecuentes (FAQ)
+
+            Tu tarea es:
+
+            1. Verifica si el contenido del manual o del FAQ está claramente relacionado con el problema detectado.
+            2. Si una solución **no está relacionada**, ignórala.
+            3. Si ninguna está relacionada, genera un mensaje amable pidiendo más detalles técnicos.
+            4. Si ya se pidió más información antes y aún no se puede resolver, sugiere escalar a un supervisor (`escalate_to_supervisor = true`).
+            5. Si hay al menos una solución relacionada, construye un mensaje claro y bien redactado:
+                - Menciona de dónde viene cada parte (Manual o FAQ).
+                - Separa cada bloque con dos saltos de línea.
+                - Termina con: **¿Esta solución resuelve tu problema?**
+            6. Evita repetir información y no uses markdown.
+
+            ENTRADA:
+            Problema detectado: {problem_description}
+
+            Solución desde el manual:
+            {manual_solution}
+
+            Solución desde el FAQ:
+            {faq_solution}
+
+            Devuelve solo este JSON (sin markdown):
+
+            {format_instructions}
+            """,
+            input_variables=["manual_solution", "faq_solution", "problem_description"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
+
+        return prompt | self.llm | parser
+
+    def _setup_identificacion_solucion_chain(self) -> RunnableSequence:
+        """Crea una cadena que analiza si el usuario ha descrito un problema técnico claro."""
+
+        parser = JsonOutputParser(pydantic_object=IdentificacionSolucion)
+        
+        prompt = PromptTemplate(
+            template="""Eres un asistente técnico de Eroski.
+
+        Tu tarea es leer la conversación reciente y decidir si el usuario ha descrito un problema técnico **con suficiente claridad**.
+
+        TIPO DE EQUIPO: {incident_type}
+
+        Si el usuario **no ha dado detalles concretos**, devuelve un mensaje amable pidiendo más información.
+
+        Si el usuario **describe claramente el problema** (por ejemplo: "la balanza no imprime etiquetas"), extrae el problema identificado y su confianza.
+
+        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado.
+
+        Devuelve un JSON en este formato (sin markdown):
+
+        {format_instructions}
+
+        CONVERSACIÓN RECIENTE:
+        {chat_history}
+        """,
+            input_variables=["chat_history", "incident_type"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
+
+        return prompt | self.llm | parser
+
+    def _setup_agent_manual(self) -> AgentExecutor:
+        """Configura el agente ReAct con orientación proactiva a buscar solución directamente."""
+        
+        prompt_template = PromptTemplate.from_template("""
+    Eres un asistente de soporte técnico de Eroski especializado en resolver incidencias en tiendas.
+
+    Tu objetivo es analizar el historial reciente del usuario y ofrecer una posible solución con la información disponible.
+
+    Tienes acceso a las siguientes herramientas:
+    {tools}
+
+    Herramientas disponibles: {tool_names}
+
+    Historial reciente del usuario:
+    {user_history}
+
+    Tu proceso:
+    1. Si necesitas extraer detalles del problema, puedes usar la herramienta "faq_problem".
+    2. Si ya tienes una idea razonable, busca directamente soluciones en los manuales o responde con tu conocimiento.
+    3. Siempre que des una solución, termina con: **¿Esta solución resuelve tu problema?**
+
+    IMPORTANTE:
+    - No esperes confirmación previa del usuario.
+    - Etiqueta cada paso con su fuente: (FAQ), (Manual), (Otros)
+    - Si no encuentras solución, pide más detalles de forma amable.
+
+    Formato de respuesta:
+    Thought: [tu razonamiento]
+    Action: [herramienta a usar]
+    Action Input: [entrada para la herramienta]
+    Observation: [resultado de la herramienta]
+    ... (repite si es necesario)
+    Final Answer: [respuesta clara al usuario con etiquetas y pregunta de confirmación]
+
+    Pregunta: {input}
+    Contexto del agente: {agent_scratchpad}
+    """)
+
+        agent = create_react_agent(
+            llm=self.llm,
+            tools=self.tools_manual,
+            prompt=prompt_template
+        )
+
+        return AgentExecutor(
+            agent=agent,
+            tools=self.tools_manual,
+            verbose=True,
+            max_iterations=5,
+            early_stopping_method="generate"
+        )
+
+    def _setup_agent_faq_v01(self) -> AgentExecutor:
+        """Configura el agente ReAct con orientación proactiva a buscar solución directamente."""
+        
+        prompt_template = PromptTemplate.from_template("""
+    Eres un asistente de soporte técnico de Eroski especializado en resolver incidencias en tiendas.
+
+    Tu objetivo es analizar el historial reciente del usuario y ofrecer una posible solución con la información disponible.
+
+    Tienes acceso a las siguientes herramientas:
+    {tools}
+
+    Herramientas disponibles: {tool_names}
+
+    El input para la herramienta es:
+        mensaje_usuario:{user_history}
+        tipo_incidencia: {incident_type}
+
+    Historial reciente del usuario:
+    {user_history}
+
+    Tu proceso:
+    1. Si necesitas extraer detalles del problema, puedes usar la herramienta "faq_problem".
+    2. Si ya tienes una idea razonable, busca directamente soluciones en los manuales o responde con tu conocimiento.
+    3. Siempre que des una solución, termina con: **¿Esta solución resuelve tu problema?**
+
+    IMPORTANTE:
+    - No esperes confirmación previa del usuario.
+    - Etiqueta cada paso con su fuente: (FAQ), (Manual), (Otros)
+    - Si no encuentras solución, pide más detalles de forma amable.
+
+    Formato de respuesta:
+    Thought: [tu razonamiento]
+    Action: [herramienta a usar]
+    Action Input: [entrada para la herramienta]
+    Observation: [resultado de la herramienta]
+    ... (repite si es necesario)
+    Final Answer: [respuesta clara al usuario con etiquetas y pregunta de confirmación]
+
+    Pregunta: {input}
+    Contexto del agente: {agent_scratchpad}
+    """)
+
+        agent = create_react_agent(
+            llm=self.llm,
+            tools=self.tools_faq,
+            prompt=prompt_template
+        )
+
+        return AgentExecutor(
+            agent=agent,
+            tools=self.tools_faq,
+            verbose=True,
+            max_iterations=5,
+            early_stopping_method="generate"
+        )
+
+    def _setup_agent_faq(self) -> Runnable:
+
+        class FAQ_ProblemMatch(BaseModel):
+            problema_detectado: str = Field(..., description="Nombre o descripción del problema más similar encontrado en el JSON")
+            solucion: str = Field(..., description="Solución correspondiente al problema detectado")
+            confianza: float = Field(..., ge=0.0, le=1.0, description="Nivel de confianza en el match entre el problema del usuario y el JSON")
+                
+        """Configura el agente para buscar la solución en el archivo json que guarda los problemas más frecuentes.
+        Misión:
+        1. Identificar el problema dentro del listado de problemas para el tipo de incidente que hay en el json
+        2. Recuperar la solución más adecuada a ese problema.
+        
+        """
+        
+        prompt_template = PromptTemplate.from_template("""
+            Eres un asistente técnico que ayuda a identificar el problema más probable en función del historial de mensajes de un usuario y una lista de problemas conocidos.
+
+            ### Instrucciones:
+
+            1. Lee el problema identificado.
+            2. Compara el contenido con los problemas disponibles.
+            3. Devuelve el problema más parecido y su solución.
+            4. Estima una confianza (entre 0.0 y 1.0).
+            5. La salida debe tener exactamente este formato:
+
+            {format_instructions}
+
+            Mensajes del usuario:
+            {problema_identificado}
+
+            Problemas conocidos:
+            {problemas_json}
+            """)
+        parser = JsonOutputParser(pydantic_object=FAQ_ProblemMatch)
+
+        prompt = prompt_template.partial(format_instructions=parser.get_format_instructions())
+        chain = prompt | self.llm | parser
+
+        return chain
+
+    def _fusionador_soluciones(self, llm_manual: dict, llm_faq: dict) -> dict:
+        """
+        Fusiona dos respuestas dict (que pueden incluir AIMessage) en un único JSON estructurado.
+
+        Args:
+            llm_manual (dict): Respuesta del LLM manual.
+            llm_faq (dict): Respuesta del LLM faq.
+
+        Returns:
+            dict: Respuesta fusionada con estructura normalizada.
+        """
+
+        def to_serializable(obj: dict) -> dict:
+            """
+            Convierte cualquier instancia de AIMessage en un diccionario plano { "content": str }.
+            """
+            obj_copy = obj.copy()
+            if "messages" in obj_copy and isinstance(obj_copy["messages"], list):
+                obj_copy["messages"] = [
+                    {"content": m.content} if isinstance(m, AIMessage)
+                    else {"content": m.get("content", str(m))}
+                    for m in obj_copy["messages"]
+                ]
+            return obj_copy
+
+        fusion_prompt_template = """
+        Fusiona las siguientes dos respuestas JSON generadas por modelos diferentes (`llm_manual` y `llm_faq`) en un único JSON con la siguiente estructura:
+
+        {{
+        "problem_description": string,
+        "problem_identified": boolean,
+        "pending_confirmation": boolean,
+        "messages": [
+            {{
+            "content": string
+            }}
+        ],
+        "solution_content": string,
+        "awaiting_user_input": boolean,
+        "confidence": float
+        }}
+
+        Reglas:
+        1. `problem_description`: combinar o unificar las descripciones de ambos modelos.
+        2. `problem_identified`: true si alguno de los modelos lo tiene como true.
+        3. `pending_confirmation`: true si alguno de los modelos lo tiene como true.
+        4. `messages`: un único mensaje con la solución fusionada, indicando origen (manual o faq). Si hay URL, añade la referencia: (manual - ver: URL) o (faq - ver: URL).
+        5. `solution_content`: mismo texto que en messages pero como string plano.
+        6. `awaiting_user_input`: true si alguno de los modelos lo tiene como true.
+        7. `confidence`: el mayor valor de los dos.
+
+        Solo devuelve el JSON, sin comentarios ni explicaciones.
+
+        - LLM Manual:
+        {llm_manual}
+
+        - LLM FAQ:
+        {llm_faq}
+        """.strip()
+
+        prompt = PromptTemplate.from_template(fusion_prompt_template)
+        parser = JsonOutputParser()
+        chain = prompt | self.llm | parser
+
+        # Asegura serialización válida de los mensajes
+        llm_manual_serializable = json.dumps(to_serializable(llm_manual), indent=2, ensure_ascii=False)
+        llm_faq_serializable = json.dumps(to_serializable(llm_faq), indent=2, ensure_ascii=False)
+
+        # Invocar el LLM
+        result = chain.invoke({
+            "llm_manual": llm_manual_serializable,
+            "llm_faq": llm_faq_serializable
+        })
+
+        # Reconstruir los messages como AIMessage si es necesario
+        if isinstance(result.get("messages"), list):
+            result["messages"] = [AIMessage(content=m["content"]) for m in result["messages"]]
+
+        return result
 
     def _mostrar_ejemplos_frecuentes(self, incident_type: str) -> str:
         """Muestra ejemplos de problemas frecuentes al usuario."""
@@ -637,11 +1199,21 @@ Responde únicamente con "si" o "no".
             
             # Usar ConfirmationTool para procesar la respuesta
             confirmacion = self.confirmation_tool.check_with_state(last_message, state)
-            print(f"👹 confirmación: {confirmacion}")
 
 
             if confirmacion == "si":
-                # Usuario confirmó - proceder a buscar soluciones
+                # Usuario confirmó - 
+                # identificar si la confirmacion fue para buscar problema o para confirmar solución.
+                # proceder a buscar soluciones
+                if state.get("solution_validation_pending"):
+                    return {
+                        "pending_confirmation": False,
+                        "solution_found":True,
+                        "messages": [AIMessage(content="Ha sido un placer atenderte, espero verte pronto!")],
+                        
+                    }
+
+                
                 problema = state.get("problem_description", "")
                 incident_type = state.get("incident_type", "")
                 
@@ -702,6 +1274,7 @@ Responde únicamente con "si" o "no".
                     
                     return Command(update={
                         "extra_info_provided": True,
+                        "solution_validation_pending": False,
                         "problem_identified": False,
                         "pending_confirmation": False,
                         "messages": state.get("messages", []) + [
@@ -714,6 +1287,7 @@ Responde únicamente con "si" o "no".
                     response = "Entiendo. " + self._mostrar_ejemplos_frecuentes(state.get("incident_type", ""))
                     return Command(update={
                         "pending_confirmation": False,
+                        "solution_validation_pending":False,
                         "problem_identified": False,
                         "problem_description": "",
                         "messages": state.get("messages", []) + [AIMessage(content=response)],
@@ -726,7 +1300,8 @@ Responde únicamente con "si" o "no".
                     "messages": state.get("messages", []) + [
                         AIMessage(content="No estoy seguro de tu respuesta. ¿Puedes confirmar con 'sí' o 'no' si he identificado correctamente el problema?")
                     ],
-                    "awaiting_user_input": True
+                    "awaiting_user_input": True,
+                    "solution_validation_pending":False
                 }
             
         except Exception as e:
@@ -756,8 +1331,7 @@ Responde únicamente con "si" o "no".
             
             # Usar ConfirmationTool
             confirmacion = self.confirmation_tool.check_with_state(last_message, state)
-            print(f"👹confirmacion : {confirmacion}")
-            if confirmacion["confirmed"]:
+            if confirmacion == "si":
                 # Solución exitosa
                 return {
                     "solution_found": True,
@@ -768,7 +1342,7 @@ Responde únicamente con "si" o "no".
                     ]
                 }
                 
-            elif confirmacion["explicitly_denied"]:
+            elif confirmacion == "no":
                 # Solución no funcionó - intentar refinar
                 attempts = state.get("solution_attempts", 0) + 1
                 
@@ -810,129 +1384,7 @@ Responde únicamente con "si" o "no".
                     AIMessage(content="Hubo un error evaluando la solución. ¿Podrías decirme si el problema se resolvió?")
                 ]
             }
-    
-    async def execute(self, state: EroskiState) -> Command:
-        """
-        Método execute principal para LangGraph que maneja todo el flujo de búsqueda de soluciones.
-        
-        Args:
-            state: Estado actual del chatbot
-            
-        Returns:
-            Command: Comando con las actualizaciones del estado
-        """
-        print(f"👹Entrada en el nodo {self.__class__.__name__}👹")
-        print(f"👹confirmación incidente {state.get('incident_type_confirmed')}👹")
-        print(f"👹pending_confirmation {state.get('pending_confirmation')}👹")
-        print(f"👹awaiting_user_input {state.get('awaiting_user_input')}👹")
-        incident_id = state.get("incident_id", None)
-        if not incident_id:
-            incident_id = get_incident_manager().manage_incident(state)
-        print(f"👹Incidente ID: {incident_id}👹")
-        try:
-            incident_type = state.get("incident_type")
-            if not incident_type:
-                return self._handle_missing_incident_type(state)
-            
-            # Preparar actualización base del estado
-            base_update = {
-                "incident_id": incident_id,
-                "current_node": self.node_name,
-                "last_activity": datetime.now()
-            }
-            
-            # Verificar que tenemos incident_type
-            if not state.get("incident_type"):
-                logger.error("No hay incident_type en el estado")
-                return Command(update={
-                    **base_update,
-                    "messages": state.get("messages", []) + [
-                        AIMessage(content="Error: No se pudo identificar el tipo de incidencia. Por favor, reinicia la conversación.")
-                    ]
-                })
-            
-            # Manejar confirmación pendiente
-            if state.get("pending_confirmation", False):
-                print(f"👹Confirmacion: {state.get('pending_confirmation', False)}")
-                confirmation_update = await self._procesar_confirmacion_pendiente(state)
-                if isinstance(confirmation_update, Command):
-                    self._track_incident_state(state, confirmation_update.update)
-                    return Command(update={**base_update, **confirmation_update.update})
-                else:
-                    return Command(update={**base_update, **confirmation_update})
-            
-            # Manejar evaluación de solución
-            if state.get("solution_content") and not state.get("solution_found", False):
-                evaluation_update = self._evaluar_solucion(state)
-                self._track_incident_state(state, evaluation_update)
-                return Command(update={**base_update, **evaluation_update})
-            
-            # Proceso principal de identificación de problemas
-            if not state.get("problem_identified", False):
-                
-                # Obtener último mensaje del usuario
-                last_message = None
-                for msg in reversed(state.get("messages", [])):
-                    if isinstance(msg, HumanMessage):
-                        last_message = msg.content
-                        break
-                
-                if not last_message:
-                    # Primera vez - mostrar ejemplos
-                    response = self._mostrar_ejemplos_frecuentes(state.get("incident_type", ""))
-                    return Command(update={
-                        **base_update,
-                        "messages": state.get("messages", []) + [AIMessage(content=response)],
-                        "awaiting_user_input": True
-                    })
-                
-                # Usar agente para identificar el problema
-                
-                user_history = "\n".join([
-                    f"- {m.content}" for m in state.get("messages", [])[-5:] if isinstance(m, HumanMessage)
-                ])
-                agent_input = "Por favor, ayuda al usuario con base en la información anterior."
 
-                try:
-                    agent_response = self.agent.invoke({"input": agent_input,
-                                                        "user_history": user_history})
-                    
-                    verifier = AgentOutputLLMVerifier()
-                    response_update = verifier.analyze(agent_response.get("output", ""), state)
-                    self._track_incident_state(state, response_update)
-                    return Command(update={**base_update, **response_update})
-                
-                except Exception as e:
-                    logger.error(f"Error con agente: {e}")
-                    return Command(update={
-                        **base_update,
-                        "messages": state.get("messages", []) + [
-                            AIMessage(content="Hubo un problema procesando tu consulta. ¿Podrías describir el problema de forma más específica?")
-                        ],
-                        "awaiting_user_input": True
-                    })
-            
-            # Si llegamos aquí, mantener estado actual
-            return Command(update=base_update)
-            
-        except Exception as e:
-            logger.error(f"Error en buscar_solucion_node: {e}")
-            return Command(update={
-                "current_node": self.node_name,
-                "last_activity": datetime.now(),
-                "messages": state.get("messages", []) + [
-                    AIMessage(content="Lo siento, hubo un error interno. ¿Podrías intentar describir tu problema de nuevo?")
-                ],
-                "awaiting_user_input": True
-            })
-        
-        finally:
-            # Limpiar recursos
-            try:
-                self.knowledge_base.close()
-            except:
-                pass
-    
     def _get_incident_manager(self):
         """Obtener instancia singleton del incident manager"""
         if self._incident_manager is None:
@@ -967,7 +1419,6 @@ Responde únicamente con "si" o "no".
             # No fallar si hay error en tracking
             print(f"⚠️ Error en incident tracking: {e}")
             return state.get("incident_id", "ERROR-TRACKING")
-
 
     def __call__(self, state: EroskiState) -> EroskiState:
         """
@@ -1017,6 +1468,9 @@ if __name__ == "__main__":
     import asyncio
     from models.eroski_state import EroskiState
     from langchain_core.messages import HumanMessage, AIMessage
+
+    incidents_manager = EroskiIncidentsManager()
+    exit()
     
     async def test_node():
         """Test del nodo de búsqueda de soluciones"""
@@ -1035,32 +1489,22 @@ if __name__ == "__main__":
             current_node="buscar_solucion",
             awaiting_user_input=False,
             authenticated=True,
-            employee_name="Test User"
+            incident_user_name="Test User"
         )
         
         # Ejecutar nodo
         try:
+            incidents_manager = EroskiIncidentsManager()
+            
             result = await buscar_solucion_node(test_state)
-            print("✅ Test completado:")
-            print(f"Comando: {type(result)}")
-            print(f"Actualizaciones: {list(result.update.keys())}")
             if "messages" in result.update:
                 last_msg = result.update["messages"][-1] if result.update["messages"] else None
-                if last_msg:
-                    print(f"Último mensaje: {last_msg.content[:100]}...")
-                    
-            # Test adicional del ProblemIdentificationTool
-            print("\n🔧 Test del ProblemIdentificationTool:")
-            incidents_manager = EroskiIncidentsManager()
-            problem_tool = ProblemIdentificationTool(incidents_manager)
+            problem_tool = FAQ_ProblemIdentificationTool(incidents_manager)
             
-            test_result = problem_tool.identify_problem(
+            test_result = problem_tool.faq_problem(
                 "La balanza no imprime etiquetas", 
                 "balanza"
             )
-            print(f"Resultado: {test_result}")
-            print(f"Confidence: {test_result.get('confidence', 0)}")
-            print(f"Keywords: {test_result.get('keywords', [])}")
             
         except Exception as e:
             print(f"❌ Error en test: {e}")
@@ -1068,3 +1512,7 @@ if __name__ == "__main__":
             traceback.print_exc()
     
     asyncio.run(test_node())
+
+
+
+

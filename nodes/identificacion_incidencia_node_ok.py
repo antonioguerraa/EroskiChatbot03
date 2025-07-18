@@ -33,7 +33,6 @@ import psycopg2.extras
 
 # LangChain imports
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.messages import BaseMessage
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.agents import create_react_agent, AgentExecutor
@@ -48,7 +47,6 @@ from nodes.tools.confirmation_tool import add_confirmation_tool_to_node
 
 # LangGraph imports
 from langgraph.types import Command
-from langchain_core.runnables import RunnableSequence
 
 # Project imports
 from models.eroski_state import EroskiState
@@ -57,7 +55,6 @@ from utils.llm.providers import get_llm, get_vectorizer
 from config.settings import get_settings
 
 from models.incident_response import IncidentResponse
-from models.historical_analisis import HistoricalAnalysis
 
 parser = PydanticOutputParser(pydantic_object=IncidentResponse)
 
@@ -652,8 +649,6 @@ Analiza el mensaje del usuario cuidadosamente usando los documentos del Retrieve
 # NODO PRINCIPAL DE IDENTIFICACIÓN
 # =============================================================================
 
-
-
 class IdentificacionNode(BaseNode):
     """
     Nodo principal para identificación de incidencias técnicas.
@@ -666,22 +661,35 @@ class IdentificacionNode(BaseNode):
     5. Actualiza estado EroskiState cuando se confirma
     """
     
-
     def __init__(self):
         super().__init__("IdentificacionIncidencia")
         self.llm = get_llm()
+        
+        # Configurar tool de confirmación
         self.confirmation_tool = ConfirmationTool() if CONFIRMATION_AVAILABLE else None
-
+        
+        # Cargar datos de incidencias
         self.incidents_data = self._load_incidents_data()
+        print("👹Datos cargados👹")
+        # Configurar sistema de recuperación semántica con LangChain Retriever
         self.semantic_retriever = EroskiIncidentRetriever(self.incidents_data)
+        
+        # Configurar tool de identificación
         self.identify_tool = IdentifyIncidentTool(
-            self.incidents_data, self.llm, self.semantic_retriever
+            self.incidents_data, 
+            self.llm, 
+            self.semantic_retriever
         )
-
-        # 💡 Nuevo: parser + agente
-        self.response_parser = PydanticOutputParser(pydantic_object=IncidentResponse)
-        self.chain = self._setup_incident_chain()
-
+        
+        # Configurar agente React
+        self.agent = self._setup_react_agent()
+        
+    def get_required_fields(self) -> List[str]:
+        return ["authenticated", "messages"]
+    
+    def get_actor_description(self) -> str:
+        return "Identifico tipos de incidencias técnicas usando IA conversacional y recuperación semántica"
+    
     def _load_incidents_data(self) -> Dict[str, Any]:
         """Cargar datos de incidencias desde el archivo JSON"""
         try:
@@ -708,16 +716,81 @@ class IdentificacionNode(BaseNode):
         except Exception as e:
             self.logger.error(f"❌ Error cargando datos de incidencias: {e}")
             return {}
+    
+    def _setup_react_agent(self) -> AgentExecutor:
+        """Configurar agente React con las tools disponibles"""
+        try:
+            # Lista de tools disponibles
+            tools = [self.identify_tool.identify_incident_type]
+            
+            # Template para el agente React
+            react_template = """Eres un asistente especializado en identificación de incidencias técnicas para Eroski.
 
-    def _get_common_examples_for_prompt(self, limit: int = 4) -> str:
-        ejemplos = []
-        for i, (incident_type, data) in enumerate(self.incidents_data.items()):
-            if i >= limit:
-                break
-            desc = data.get("description", "")
-            ejemplos.append(f"- {incident_type}: {desc}")
-        return "\n".join(ejemplos)
+Tu misión es ayudar al empleado a identificar el tipo de incidencia que está experimentando.
 
+TIPOS COMUNES DE INCIDENCIAS:
+- BALANZAS: Problemas con pesado, etiquetado, precios incorrectos
+- TPV: Problemas con cajas registradoras, lectores de tarjetas, impresión tickets
+- IMPRESORAS: Problemas de impresión, atascos, cartuchos
+- RED: Problemas de conectividad, internet, WiFi
+
+HERRAMIENTAS DISPONIBLES:
+{tools}
+
+INSTRUCCIONES:
+1. Analiza el mensaje del usuario buscando indicios del tipo de incidencia
+2. Si no está claro, haz preguntas específicas sobre el equipo o problema
+3. Usa la herramienta identify_incident_type cuando tengas suficiente información
+4. Si la confianza es >= 0.75, procede a confirmar con el usuario
+5. Si la confianza es < 0.75, pide más detalles específicos
+
+FORMATO DE RESPUESTA:
+Thought: [tu análisis del mensaje]
+Action: [nombre de la herramienta si necesitas usarla]
+Action Input: [input para la herramienta]
+Observation: [resultado de la herramienta]
+Thought: [tu análisis del resultado]
+Final Answer: [respuesta final al usuario]
+
+CONVERSACIÓN ACTUAL:
+{chat_history}
+
+MENSAJE DEL USUARIO: {{input}}
+
+HISTORIAL DE PENSAMIENTOS:
+{agent_scratchpad}"""
+
+            # Crear prompt template
+            react_prompt = PromptTemplate(
+                template=react_template,
+                input_variables=[ "chat_history", "input", "agent_scratchpad"],
+                partial_variables={"tools": "\n".join([f"{tool.name}: {tool.description}" for tool in tools]),
+                                   "tool_names": ", ".join([tool.name for tool in tools])  # 👈 AÑADIR ESTO
+                                   }
+            )
+            
+            # Crear agente React
+            agent = create_react_agent(
+                llm=self.llm,
+                tools=tools,
+                prompt=react_prompt
+            )
+            
+            # Crear AgentExecutor
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=tools,
+                verbose=True,
+                max_iterations=5,
+                handle_parsing_errors=True
+            )
+            
+            return agent_executor
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error configurando agente React: {e}")
+            return None
+    
     def _get_common_examples(self) -> str:
         """Obtener ejemplos representativos de tipos comunes"""
         examples = []
@@ -735,125 +808,121 @@ class IdentificacionNode(BaseNode):
         else:
             return "Por favor, describe el problema que estás experimentando."
     
+
     async def execute(self, state: EroskiState) -> Command:
+        """Ejecutar lógica principal del nodo de identificación"""
         try:
             self.logger.info("🔍 Iniciando identificación de incidencia")
-            print(f"👹👹 Entrada en el nodo de identificación de incidencia...👹👹")
-            # 1. Verificar autenticación
+            # Verificar autenticación
             if not state.get("authenticated"):
+                self.logger.warning("⚠️ Usuario no autenticado")
                 return Command(update={
-                    "messages": [AIMessage(content="Debes estar autenticado para reportar incidencias.")],
+                    "messages":  [
+                        AIMessage(content="Necesitas estar autenticado para reportar incidencias.")
+                    ],
                     "current_node": "identificar_incidencia",
                     "awaiting_user_input": True
                 })
-
+            
             messages = state.get("messages", [])
+            
+            # Obtener último mensaje del usuario Y analizar historial completo
             last_message, all_user_messages = self._extract_user_messages(messages)
-            attempts = state.get("identification_attempts", 0)
-            max_attempts = state.get("max_intent_tipo_incidencia", 4)
-            print(f"👹👹 Intentos de identificación: {attempts}/{max_attempts}")
 
-            # 2. Escalado automático si se supera el límite de intentos
+            attempts = state.get("identification_attempts", 0)
+
+            max_attempts = state.get("max_intent_tipo_incidencia", 4)
+
             if attempts >= max_attempts:
                 self.logger.warning(f"⚠️ Límite de intentos alcanzado: {attempts}/{max_attempts}")
                 return Command(update={
-                    "messages": [AIMessage(content="He intentado identificar la incidencia varias veces. Te voy a conectar con un supervisor para ayudarte mejor.")],
+                    "messages": [AIMessage(content="He intentado identificar la incidencia varias veces. Te voy a conectar con un supervisor para que pueda ayudarte mejor.")],
                     "escalation_needed": True,
-                    "escalation_reason": f"Límite de intentos ({attempts}/{max_attempts})",
+                    "escalation_reason": f"Límite de intentos de identificación alcanzado ({attempts}/{max_attempts})",
                     "current_node": "supervisor",
                     "awaiting_user_input": False
                 })
-
-            # 3. Procesar confirmación pendiente
-            if state.get("pending_confirmation", False):
+            # Procesar confirmación pendiente
+            if state.get("pending_confirmation"):
+                last_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
                 return await self._handle_confirmation(state, last_message)
 
-            # 4. Analizar historial del usuario (al inicio del nodo)
-            if not state.get("identification_started") and all_user_messages:
-                print("👹check 1")
-                self.logger.info(f"📚 Analizando historial del usuario ({len(all_user_messages)} mensajes)")
-                historical_analysis = await self._analyze_historical_messages(all_user_messages, state)
 
-                update = {
-                    "messages": [AIMessage(content=historical_analysis["respuesta_al_usuario"])],
+
+            # Si es la primera vez en este nodo, analizar historial ANTES de mostrar ejemplos
+            print(f"👹 identification_starter: {state.get('identification_started')}")
+            if not state.get("identification_started"):
+                # Análisis histórico completo antes de mostrar ejemplos
+                if all_user_messages:
+                    self.logger.info(f"📚 Analizando historial: {len(all_user_messages)} mensajes del usuario")
+                    historical_analysis = await self._analyze_historical_messages(all_user_messages, state)
+                    
+                    # Si el análisis histórico encontró una incidencia con alta confianza
+                    if historical_analysis.get("incident_found") and historical_analysis.get("confidence", 0) >= 0.75:
+                        incident_type = historical_analysis["incident_type"]
+                        evidence = historical_analysis.get("evidence", "")
+                        
+                        response_text = f"""He revisado nuestro historial de conversación y parece que ya mencionaste un problema con **{incident_type}**.
+
+Evidencia encontrada: {evidence}
+
+¿Confirmas que el problema es con {incident_type}?"""
+                        
+                        return Command(update={
+                            "messages": [AIMessage(content=response_text)],
+                            "identification_started": True,
+                            "pending_confirmation": True,
+                            "pending_incident_type": incident_type,
+                            "identification_confidence": historical_analysis["confidence"],
+                            "identification_source": "historical_analysis",
+                            "current_node": "identificar_incidencia",
+                            "awaiting_user_input": True
+                        })
+                
+                # Si no hay evidencia clara en historial, mostrar ejemplos comunes
+                common_examples = self._get_common_examples()
+                
+                # Personalizar mensaje según historial
+                if all_user_messages:
+                    intro_text = "Cuéntame más sobre la incidencia"
+                else:
+                    intro_text = "¡Hola! Voy a ayudarte a identificar el tipo de incidencia técnica."
+                
+                response_text = f"""{intro_text}
+
+{common_examples}
+
+Por favor, describe el problema que estás experimentando o menciona qué equipo está dando problemas."""
+                
+                return Command(update={
+                    "messages":[AIMessage(content=response_text)],
                     "identification_started": True,
                     "current_node": "identificar_incidencia",
                     "awaiting_user_input": True,
-                    "identification_attempts": attempts + 1,
-                    "escalation_needed": historical_analysis['escalation_needed']
-                }
-
-                if historical_analysis.get("incident_found") and historical_analysis.get("confidence", 0) >= 0.75:
-                    update.update({
-                        "pending_confirmation": True,
-                        "pending_incident_type": historical_analysis["incident_type"],
-                        "identification_confidence": historical_analysis["confidence"],
-                        "identification_keywords": historical_analysis.get("keywords_detected", []),
-                        "identification_source": "historical_analysis"
-                    })
-
-                return Command(update=update)
-
-
-
-            # 6. Ejecutar el agente React con salida estructurada
-            print("👹check 4")
-            self.logger.info("🤖 Ejecutando agente de identificación")
-            chat_history = self._format_chat_history(messages)
-            agent_input = {
-                "input": last_message,
-                "chat_history": chat_history
-            }
-
-            result = await self.chain.ainvoke(agent_input)
-            print("👹check 5")
-            if result is None:
-                return Command(update={
-                    "messages": [AIMessage(content="No he podido procesar tu mensaje. ¿Puedes describir el problema nuevamente?")],
-                    "awaiting_user_input": True,
-                    "identification_attempts": attempts + 1
+                    "identification_attempts": attempts + 1  # ← AGREGAR
                 })
+            
 
-            # 7. Si el agente devuelve tipo confirmado, finalizar
-            if result.incident_type_confirmed:
-                print("👹check 6")
-                return Command(update={
-                    "messages": [AIMessage(content=result.response_to_user)],
-                    "incident_type": result.incident_type,
-                    "incident_type_confirmed": True,
-                    "awaiting_user_input": True,  # o False si pasas a siguiente nodo
-                    "current_node": "identificar_incidencia",
-                    "identification_attempts": attempts + 1,
-                    "escalation_needed":result.escalation_needed
-                })
-
-            print("👹check 7")
-            # 8. Si no está confirmado, esperar confirmación del usuario
-            return Command(update={
-                "messages": [AIMessage(content=result.response_to_user)],
-                "pending_incident_type": result.incident_type,
-                "pending_confirmation": True,
-                "identification_confidence": result.confidence,
-                "identification_keywords": result.keywords,
-                "identification_source": "agente_react",
-                "awaiting_user_input": True,
-                "identification_attempts": attempts + 1,
-                "escalation_needed":result.escalation_needed
-            })
-
+            
+            # Procesar mensaje considerando TANTO el último mensaje COMO el historial
+            if last_message and self.agent:
+                return await self._process_with_agent_and_history(state, last_message, all_user_messages, messages)
+            
+            # Fallback si no hay agente
+            return await self._fallback_identification_with_history(state, last_message, all_user_messages, messages)
+            
         except Exception as e:
             self.logger.error(f"❌ Error en execute: {e}")
             return Command(update={
-                "messages": [AIMessage(content="Disculpa, ha ocurrido un error. ¿Puedes describir tu problema de nuevo?")],
+                "messages": [
+                    AIMessage(content="Disculpa, ha ocurrido un error. ¿Puedes describir tu problema de nuevo?")
+                ],
+                "current_node": "identificar_incidencia",
                 "error_count": state.get("error_count", 0) + 1,
                 "awaiting_user_input": True
             })
-        
-    def get_actor_description(self) -> str:
-        return "Identifico tipos de incidencias técnicas usando IA conversacional y recuperación semántica"
 
-    def get_required_fields(self) -> List[str]:
-        return ["authenticated", "messages"]
+
 
     def _extract_user_messages(self, messages: List) -> Tuple[Optional[str], List[str]]:
         """Extraer último mensaje y todos los mensajes del usuario del historial"""
@@ -872,159 +941,9 @@ class IdentificacionNode(BaseNode):
         except Exception as e:
             self.logger.error(f"❌ Error extrayendo mensajes: {e}")
             return None, []
-
-    async def _handle_confirmation(self, state: EroskiState, last_message: str) -> Command:
-        try:
-            attempts = state.get("identification_attempts", 0)
-            messages = state.get("messages", [])
-            
-            # 1. Evaluar si el usuario ha confirmado o rechazado
-            if not self.confirmation_tool or not last_message:
-                confirmation = "si" if any(word in last_message.lower() 
-                                            for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
-            else:
-                confirmation = self.confirmation_tool.check_with_history(last_message, messages)
-            
-            print(f"👹 confirmacion: {confirmation}")
-            self.logger.info(f"🔍 Confirmación analizada: '{last_message}' -> '{confirmation}'")
-
-            incident_type = state.get("pending_incident_type")
-
-            if confirmation == "si":
-                print("👹 Ha dicho que sí!")
-                response_text = f"¡Perfecto! He confirmado que el problema es con **{incident_type}**. Ahora vamos a recopilar más detalles sobre la incidencia."
-                return Command(update={
-                    "messages": [AIMessage(content=response_text)],
-                    "incident_type": incident_type,
-                    "incident_type_confirmed": True,
-                    "pending_confirmation": False,
-                    "pending_incident_type": None,
-                    "incident_info_adicional_completa": False,
-                    "current_node": "identificar_incidencia",
-                    "awaiting_user_input": True
-                })
-            elif confirmation == "no":
-                self.logger.info(f"❌ Usuario rechazó tipo '{incident_type}', reanalizando con agente React")
-                rejected_type = incident_type
-                previous = state.get("previous_rejected_types", []) + [rejected_type]
-                chat_history = self._format_chat_history(messages)
-
-                enriched_input = f"""{last_message}
-
-                Ya ha rechazado el tipo: {rejected_type}
-                Historial anterior:
-                {chat_history}
-                """
-
-                try:
-                    result = await self.chain.ainvoke({
-                        "input": enriched_input,
-                        "chat_history": chat_history
-                    })
-                    print(f"👹result after No Confirmation: {result}")
-                    # 2. Si el agente devuelve un nuevo tipo con confianza alta, autoconfirmar
-                    print(f"👹👹👹result: {result}\n\nresult.incident_type: {result.incident_type}\n\nrejected_type: {rejected_type}")
-                    if result and result.incident_type and result.incident_type != rejected_type:
-                        print(f"👹👹👹 Entra autoconfirmacion")
-                        if result.confidence >= 0.9:
-                            auto_msg = f"""Detecté con alta confianza que el problema es con **{result.incident_type}** (confianza: {result.confidence:.2f}).
-
-                            {result.reasoning}
-
-                            Procedo a confirmar automáticamente."""
-                            return Command(update={
-                                "messages": [AIMessage(content=auto_msg)],
-                                "incident_type": result.incident_type,
-                                "incident_type_confirmed": True,
-                                "pending_confirmation": False,
-                                "pending_incident_type": None,
-                                "identification_source": "autoconfirmed_after_rejection",
-                                "awaiting_user_input": True,
-                                "incident_info_adicional_completa": False,
-                                "identification_attempts": attempts + 1,
-                                "previous_rejected_types": previous
-                            })
-
-                        # 3. Confianza normal: volver a pedir confirmación
-                        confirm_msg = f"""Entendido, no es un problema con **{rejected_type}**.
-
-    He analizado tu mensaje y detecté que podría tratarse de **{result.incident_type}** (confianza: {result.confidence:.2f}).
-
-    {result.reasoning}
-
-    ¿Confirmas que el problema es con **{result.incident_type}**?"""
-                        return Command(update={
-                            "messages": [AIMessage(content=confirm_msg)],
-                            "pending_confirmation": True,
-                            "pending_incident_type": result.incident_type,
-                            "identification_confidence": result.confidence,
-                            "identification_keywords": result.keywords,
-                            "identification_source": "react_agent_after_rejection",
-                            "incident_info_adicional_completa": False,
-                            "awaiting_user_input": True,
-                            "identification_attempts": attempts + 1,
-                            "previous_rejected_types": previous
-                        })
-
-                    # 4. Fallback: preguntar al usuario manualmente si no se encontró nada útil
-                    specific_question = self._generate_question_avoiding_rejected_types(previous, state)
-                    return Command(update={
-                        "messages": [AIMessage(content=f"Entendido, no es un problema con **{rejected_type}**.\n\n{specific_question}")],
-                        "pending_confirmation": False,
-                        "pending_incident_type": None,
-                        "awaiting_user_input": True,
-                        "identification_attempts": attempts + 1,
-                        "previous_rejected_types": previous
-                    })
-
-                except Exception as e:
-                    self.logger.error(f"❌ Error en reintento con agente React: {e}")
-                    specific_question = self._generate_question_avoiding_rejected_types(previous, state)
-                    return Command(update={
-                        "messages": [AIMessage(content=f"Entendido, no es un problema con **{rejected_type}**.\n\n{specific_question}")],
-                        "pending_confirmation": False,
-                        "pending_incident_type": None,
-                        "awaiting_user_input": True,
-                        "identification_attempts": attempts + 1,
-                        "previous_rejected_types": previous
-                    })
-
-            # 5. Si la respuesta no es clara ("no sé", etc.)
-            clarification = f"""No estoy seguro de tu respuesta sobre si el problema es con **{incident_type}**.
-
-    ¿Podrías confirmarme claramente:
-    - ¿SÍ es un problema con {incident_type}?
-    - ¿NO es un problema con {incident_type}?
-
-    Si no es con {incident_type}, por favor describe con qué equipo o sistema tienes el problema."""
-            return Command(update={
-                "messages": [AIMessage(content=clarification)],
-                "awaiting_user_input": True,
-                "identification_attempts": attempts + 1
-            })
-
-        except Exception as e:
-            self.logger.error(f"❌ Error en _handle_confirmation: {e}")
-            return Command(update={
-                "messages": [AIMessage(content="Disculpa, ocurrió un error procesando tu respuesta. ¿Puedes intentarlo de nuevo?")],
-                "pending_confirmation": False,
-                "pending_incident_type": None,
-                "error_count": state.get("error_count", 0) + 1,
-                "awaiting_user_input": True
-            })
-
-    def format_full_chat_history(self, messages: List[BaseMessage], max_messages: int = 10) -> str:
-        lines = []
-        for msg in messages[-max_messages:]:
-            if isinstance(msg, HumanMessage):
-                lines.append(f"👤 Usuario: {msg.content}")
-            elif isinstance(msg, AIMessage):
-                lines.append(f"🤖 Asistente: {msg.content}")
-        return "\n".join(lines)
-
+    
     async def _analyze_historical_messages(self, user_messages: List[str], state: EroskiState) -> Dict[str, Any]:
         """Analizar todo el historial de mensajes del usuario buscando pistas de incidencias"""
-        print("👹👹Entra en _analyze_historical_messages")
         try:
             # Combinar todos los mensajes del usuario en un texto único
             combined_text = " | ".join(user_messages)
@@ -1032,8 +951,44 @@ class IdentificacionNode(BaseNode):
             
             # Usar LangChain Retriever para buscar en todo el historial
             relevant_documents = self.semantic_retriever.get_relevant_documents(combined_text)
-            user_messages_text = self.format_full_chat_history(state.get("messages", []), 10)
+            
+            # Crear prompt especializado para análisis histórico
+            historical_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Eres un especialista en análisis de historiales de conversación para identificar incidencias técnicas.
 
+Tu misión es analizar TODO EL HISTORIAL de mensajes del usuario para detectar si ya mencionó un problema técnico.
+
+CONTEXTO DEL EMPLEADO:
+- Nombre: {incident_user_name}
+- Tienda: {incident_store_name}
+- Sección: {section}
+
+DOCUMENTOS RELEVANTES DEL RETRIEVER:
+{relevant_documents}
+
+REGLAS DE ANÁLISIS:
+1. Busca menciones de equipos: balanza, TPV, caja, impresora, ordenador, red, wifi
+2. Busca síntomas: "no funciona", "error", "problema", "fallo", "no enciende", "no imprime"
+3. Considera el contexto de la sección del empleado
+4. Analiza mensajes anteriores que podrían indicar frustración o urgencia
+5. Busca números de error, códigos, o descripciones técnicas específicas
+6. Usa los documentos del Retriever para mejor identificación
+
+FORMATO DE RESPUESTA (JSON):
+{{
+    "incident_found": boolean,
+    "incident_type": "tipo_identificado_o_null",
+    "confidence": float_entre_0_y_1,
+    "evidence": "texto_que_llevó_a_la_conclusión",
+    "keywords_detected": ["lista", "de", "keywords"],
+    "reasoning": "explicación_del_análisis",
+    "needs_more_info": boolean
+}}
+
+Analiza cuidadosamente todo el historial y determina si hay evidencia de una incidencia técnica."""),
+                ("human", "HISTORIAL COMPLETO DE MENSAJES DEL USUARIO:\n{user_messages_text}")
+            ])
+            
             # Preparar datos para el prompt
             incident_user_name = state.get("incident_user_name", "Empleado")
             incident_store_name = state.get("incident_store_name", "Tienda")
@@ -1042,91 +997,40 @@ class IdentificacionNode(BaseNode):
             docs_text = self.identify_tool._format_retriever_documents(relevant_documents)
             user_messages_text = "\n".join([f"{i+1}. {msg}" for i, msg in enumerate(user_messages)])
             
+        
+            
+            class HistoricalAnalysis(BaseModel):
+                incident_found: bool = Field(description="Detecta si encontró el incidente")
+                incident_type: Optional[str] = Field(description="Typo de incidente encontrado")
+                confidence: Optional[float] = Field(description="float_entre_0_y_1")
+                evidence: Optional[str] = Field(description="texto_que_llevó_a_la_conclusión")
+                keywords_detected: Optional[List[str]] = Field(description="lista de keywords")
+                reasoning: Optional[str] = Field(description="explicación_del_análisis")
+                needs_more_info: bool = Field(description="Indica si necesita más información")
+
             parser = JsonOutputParser(pydantic_object=HistoricalAnalysis)
-            
-            incident_types_list = ", ".join(self.incidents_data.keys())  # Genera la lista de tipos válidos desde el JSON
 
-
-            historical_prompt = ChatPromptTemplate.from_messages([
-                ("system", """
-            Eres un especialista en análisis de historiales de conversación para identificar incidencias técnicas.
-
-            Tu misión es analizar TODO EL HISTORIAL de mensajes del usuario para detectar si ya mencionó una incidencia.
-
-            CONTEXTO DEL EMPLEADO:
-            - Nombre: {incident_user_name}
-            - Tienda: {incident_store_name}
-            - Sección: {section}
-
-            DOCUMENTOS RELEVANTES DEL RETRIEVER:
-            {relevant_documents}
-
-            LISTA DE TIPOS VÁLIDOS DE INCIDENCIA:
-            {incident_types_list}
-
-            TIPOS DE INCIDENCIAS COMUNES DISPONIBLES:
-            {incident_examples}
-
-            REGLAS DE ANÁLISIS:
-            1. Busca menciones de equipos como: balanza, TPV, caja, impresora, ordenador, red, wifi, etc.
-            2. Busca síntomas como: "no funciona", "error", "problema", "fallo", "no enciende", "no imprime".
-            3. Compara cualquier equipo detectado con los tipos válidos del sistema.
-            4. Si el equipo mencionado NO aparece en la lista de tipos válidos, marca "incident_found": false.
-            5. En ese caso, informa al usuario que no puedes identificar el equipo y sugiere revisar si se trata de otro más común.
-            6. Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`, si no, marca `"escalation_needed": false`
-
-            RESPUESTA AL USUARIO:
-            - Si detectas una incidencia conocida, genera un mensaje claro y amable para pedir confirmación. Ejemplo: "¿Confirmas que el problema es con una balanza?"
-            - Si NO identificas ninguna incidencia válida, sugiere con amabilidad al usuario que revise el equipo y proporciona ejemplos comunes.
-            - Si el usuairo quiere hablar con un supervisor genera un mensaje amable indicando que le pasas a un supervisor
-            
-
-            FORMATO DE RESPUESTA (devuelve solo este JSON sin markdown):
-            {{
-            "incident_found": boolean,
-            "incident_type": "tipo_identificado_o_null",
-            "confidence": float,
-            "evidence": "texto que llevó a la conclusión",
-            "keywords_detected": ["lista", "de", "keywords"],
-            "reasoning": "explicación del análisis",
-            "needs_more_info": boolean,
-            "respuesta_al_usuario": "mensaje que mostrar al usuario",
-            "escalation_needed":boolean,
-            }}
-            """),
-                ("human", "HISTORIAL COMPLETO DE MENSAJES DEL USUARIO:\n{user_messages_text}")
-            ])
-
-
-
-            # Conversión del historial completo
-            all_messages: List[BaseMessage] = state.get("messages", [])
-            user_messages_text = "\n".join([
-                f"👤 {m.content}" if m.type == "human" else f"🤖 {m.content}"
-                for m in all_messages
-            ])
-
-            # Datos de entrada para el prompt
-            prompt_inputs = {
-                "incident_user_name": incident_user_name,
-                "incident_store_name": incident_store_name,
-                "section": section,
-                "relevant_documents": self.identify_tool._format_retriever_documents(
-                    self.semantic_retriever.get_relevant_documents(user_messages_text)
-                ),
-                "incident_examples": "\n".join([
-                    f"- {k}: {v.get('description', '')}"
-                    for k, v in self.incidents_data.items()
-                ]),
-                "incident_types_list": ", ".join(self.incidents_data.keys()),
-                "user_messages_text": user_messages_text
-            }
-
-            # Construcción del chain y ejecución
             llm_chain = historical_prompt | self.llm | parser
-            result = await llm_chain.ainvoke(prompt_inputs)
+
+            response = response = await asyncio.to_thread(llm_chain.invoke, {
+                "incident_user_name":incident_user_name,
+                "incident_store_name":incident_store_name,
+                "section":section,
+                "relevant_documents":docs_text,
+                "user_messages_text":user_messages_text
+            })
             
-            return result
+            # Parsear respuesta JSON
+            try:
+                import json
+                print(f"👹 Análisis histórico completado: {response}")
+                result = response
+                self.logger.info(f"✅ Análisis histórico completado: {result.get('incident_found', False)}")
+                return result
+            except json.JSONDecodeError:
+                # Fallback si no se puede parsear JSON
+                self.logger.warning("⚠️ No se pudo parsear respuesta JSON del análisis histórico")
+                return self._fallback_historical_analysis(user_messages, relevant_documents)
                 
         except Exception as e:
             self.logger.error(f"❌ Error en análisis histórico: {e}")
@@ -1180,38 +1084,172 @@ class IdentificacionNode(BaseNode):
             self.logger.error(f"❌ Error en fallback histórico: {e}")
             return {"incident_found": False, "confidence": 0.0}
 
-    def _setup_incident_chain(self) -> RunnableSequence:
-        """Devuelve una cadena que analiza el mensaje y devuelve un IncidentResponse estructurado"""
-        parser = PydanticOutputParser(pydantic_object=IncidentResponse)
 
-        prompt_template = PromptTemplate(
-            template="""Eres un asistente experto en soporte técnico para empleados de Eroski.
+    async def _handle_confirmation(self, state: EroskiState, last_message: str) -> Command:
+        """
+        Manejar confirmación de tipo de incidencia con análisis mejorado del mensaje del usuario
+        """
+        try:
+            attempts = state.get("identification_attempts", 0)
+            if not self.confirmation_tool or not last_message:
+                # Sin tool de confirmación, asumir "sí" si es positivo
+                confirmation = "si" if any(word in last_message.lower() 
+                                        for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
+            else:
+                # Usar la versión mejorada con estado para confirmación implícita
+                messages = state.get("messages", [])
+                confirmation = self.confirmation_tool.check_with_history(last_message, messages)
+                
+                self.logger.info(f"🔍 Confirmación analizada: '{last_message}' -> '{confirmation}'")
 
-    Analiza el mensaje del usuario y devuelve un JSON estructurado siguiendo estas reglas:
+            incident_type = state.get("pending_incident_type")
+            
+            if confirmation == "si":
+                # Confirmado - actualizar estado y avanzar
+                response_text = f"¡Perfecto! He confirmado que el problema es con **{incident_type}**. Ahora vamos a recopilar más detalles sobre la incidencia."
+                
+                return Command(update={
+                    "messages": [AIMessage(content=response_text)],
+                    "incident_type": incident_type,
+                    "incident_type_confirmed": True,
+                    "pending_confirmation": False,
+                    "pending_incident_type": None,
+                    "current_node": "identificar_incidencia",  # Siguiente nodo
+                    "awaiting_user_input": True
+                })
+            
+            elif confirmation == "no":
+                # 🚀 NUEVA FUNCIONALIDAD: Re-ejecutar la lógica de identificación del nodo
+                # usando el último mensaje del usuario como entrada fresca
+                self.logger.info(f"🔍 Usuario rechazó '{incident_type}', re-analizando con tool de identificación...")
+                
+                try:
+                    # Usar la misma tool que usa el nodo para identificación inicial
+                    # pero alimentada solo con el último mensaje del usuario
+                    tool_result = await self.identify_tool.identify_incident_type_async(last_message)
+                    
+                    # Verificar si se encontró un nuevo tipo de incidencia
+                    if (tool_result.get("incident_type") != "unknown" and 
+                        tool_result.get("confidence", 0) > 0.4 and
+                        tool_result.get("incident_type") != incident_type):  # Diferente al rechazado
+                        
+                        # ¡Se encontró una nueva incidencia!
+                        new_incident_type = tool_result["incident_type"]
+                        confidence = tool_result.get("confidence", 0)
+                        keywords = tool_result.get("keywords", [])
+                        reasoning = tool_result.get("reasoning", "")
+                        data_source = tool_result.get("data_source", "")
+                        
+                        self.logger.info(f"✅ Nueva incidencia detectada en mensaje de rechazo: {new_incident_type} (confianza: {confidence})")
+                        
+                        # Formatear información adicional
+                        keywords_text = f", keywords: {', '.join(keywords)}" if keywords else ""
+                        data_source_note = f"\n\n*Análisis basado en: {data_source}*" if data_source else ""
+                        
+                        # Proponer la nueva incidencia encontrada
+                        response_text = f"""Entendido, no es un problema con **{incident_type}**.
 
-    - Identifica el tipo de incidencia (balanza, tpv, impresora, red, etc.)
-    - Si el usuario ya lo confirmó, marca 'incident_type_confirmed': true
-    - Si aún no lo ha confirmado pero tienes confianza alta (>= 0.75), marca 'incident_type_confirmed': false y pide confirmación
-    - Incluye palabras clave, razonamiento, y nivel de confianza
-    - Si la confianza es muy alta (>= 0.9), puedes marcar 'action_required': 'autoconfirmado'
-    - Si la confianza es moderada (0.5 - 0.75), marca 'action_required': 'confirmacion_usuario'
-    - Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`
-    - Si no, marca `"escalation_needed": false`
+    He analizado tu mensaje y detecté que podría ser un problema con **{new_incident_type}** (confianza: {confidence:.2f}{keywords_text}).
 
-    MENSAJE DEL USUARIO:
-    {input}
+    {reasoning}
 
-    HISTORIAL DE MENSAJES:
-    {chat_history}
+    {data_source_note}
 
-    DEVUELVE SOLO EL SIGUIENTE JSON:
-    {format_instructions}
-    """,
-            input_variables=["input", "chat_history"],
-            partial_variables={"format_instructions": parser.get_format_instructions()}
-        )
+    ¿Confirmas que el problema es con **{new_incident_type}**?"""
+                        
+                        return Command(update={
+                            "messages": [AIMessage(content=response_text)],
+                            "pending_confirmation": True,
+                            "pending_incident_type": new_incident_type,  # Nuevo tipo detectado
+                            "identification_confidence": confidence,
+                            "identification_keywords": keywords,
+                            "identification_source": "rejection_message_reanalysis",
+                            "previous_rejected_types": state.get("previous_rejected_types", []) + [incident_type],
+                            "awaiting_user_input": True,
+                            "identification_attempts": attempts + 1
+                        })
+                    
+                    else:
+                        # No se encontró nueva información útil, usar agente React para conversación
+                        self.logger.info("🤖 No se detectó nueva incidencia, usando agente React para continuar conversación")
+                        
+                        # Preparar contexto para el agente
+                        rejected_types = state.get("previous_rejected_types", []) + [incident_type]
+                        rejected_types_text = ", ".join(rejected_types) if rejected_types else "ninguno"
+                        
+                        # Crear input especial para el agente que incluya contexto de rechazo
+                        agent_input = f"""El usuario dice: "{last_message}"
 
-        return prompt_template | self.llm | parser
+    CONTEXTO: El usuario rechazó que el problema sea con {incident_type}. 
+    Tipos ya rechazados: {rejected_types_text}
+
+    Por favor ayuda al usuario a identificar el tipo correcto de incidencia técnica. 
+    Pregunta específicamente sobre qué equipo o sistema está fallando."""
+                        
+                        # Ejecutar agente React para continuar la conversación
+                        agent_response = await asyncio.to_thread(
+                            self.agent.invoke, 
+                            {"input": agent_input}
+                        )
+                        
+                        response_content = agent_response.get("output", "¿Puedes describir con más detalle qué equipo está fallando?")
+                        
+                        return Command(update={
+                            "messages": [AIMessage(content=response_content)],
+                            "pending_confirmation": False,
+                            "pending_incident_type": None,
+                            "previous_rejected_types": rejected_types,
+                            "awaiting_user_input": True,
+                            "identification_attempts":  attempts + 1
+                        })
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ Error en re-análisis con tool de identificación: {e}")
+                    
+                    # Fallback: pregunta manual específica
+                    rejected_types = state.get("previous_rejected_types", []) + [incident_type]
+                    specific_question = self._generate_question_avoiding_rejected_types(rejected_types, state)
+                    
+                    response_text = f"""Entendido, no es un problema con **{incident_type}**.
+
+    {specific_question}"""
+                    
+                    return Command(update={
+                        "messages": [AIMessage(content=response_text)],
+                        "pending_confirmation": False,
+                        "pending_incident_type": None,
+                        "previous_rejected_types": rejected_types,
+                        "awaiting_user_input": True,
+                        "identification_attempts": attempts + 1
+                    })
+            
+            else:
+                # confirmation == "no se" - No está claro, pedir aclaración
+                response_text = f"""No estoy seguro de tu respuesta sobre si el problema es con **{incident_type}**.
+
+    ¿Podrías confirmarme claramente:
+    - ¿SÍ es un problema con {incident_type}?
+    - ¿NO es un problema con {incident_type}?
+
+    Si no es con {incident_type}, por favor describe con qué equipo o sistema tienes el problema."""
+                
+                return Command(update={
+                    "messages": [AIMessage(content=response_text)],
+                    "awaiting_user_input": True,
+                    "identification_attempts": attempts + 1  # ← AGREGAR
+                })
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error en _handle_confirmation: {e}")
+            
+            # Fallback en caso de error
+            return Command(update={
+                "messages": [AIMessage(content="Disculpa, hubo un error procesando tu respuesta. ¿Puedes describir tu problema de nuevo?")],
+                "pending_confirmation": False,
+                "pending_incident_type": None,
+                "error_count": state.get("error_count", 0) + 1,
+                "awaiting_user_input": True
+            })
 
     def _generate_question_avoiding_rejected_types(self, rejected_types: List[str], state: EroskiState) -> str:
         """
@@ -1257,8 +1295,204 @@ class IdentificacionNode(BaseNode):
         except Exception as e:
             self.logger.error(f"❌ Error generando pregunta específica: {e}")
             return """Por favor, describe con más detalle qué equipo o sistema está fallando y cuál es el problema específico."""
+        
 
+    async def _process_with_agent_and_history(self, state: EroskiState, last_message: str, 
+                                            all_user_messages: List[str], messages: List) -> Command:
+        """Procesar mensaje usando el agente React CON análisis del historial completo y BD"""
+        try:
+            # Preparar contexto enriquecido con historial
+            chat_history = self._format_chat_history(messages)
+            historical_context = self._create_historical_context(all_user_messages)
+            
+            # Input enriquecido para el agente
+            enhanced_input = f"""MENSAJE ACTUAL: {last_message}
 
+CONTEXTO HISTÓRICO:
+{historical_context}
+
+INSTRUCCIÓN: Analiza tanto el mensaje actual como todo el contexto histórico para identificar la incidencia. Usa los embeddings precomputados de BD para mayor precisión."""
+            
+            # Ejecutar agente con contexto enriquecido
+            result = await asyncio.to_thread(
+                self.agent.invoke,
+                {
+                    "input": enhanced_input,
+                    "chat_history": chat_history
+                }
+            )
+            
+            agent_response = result.get("output", "No pude procesar tu mensaje.")
+            
+            # Como el agente usa la tool sync, ejecutar identificación async adicional para verificar
+            combined_input = f"{last_message} | HISTORIAL: {' | '.join(all_user_messages[-3:])}" if all_user_messages else last_message
+            tool_output = await self.identify_tool.identify_incident_type_async(combined_input)
+            
+            if isinstance(tool_output, dict) and tool_output.get("confidence", 0) >= 0.75:
+                # Alta confianza - proceder a confirmación
+                incident_type = tool_output["incident_type"]
+                keywords = ", ".join(tool_output.get("keywords", []))
+                reasoning = tool_output.get("reasoning", "")
+                data_source = tool_output.get("data_source", "")
+                
+                confirmation_text = f"""He identificado que tu problema parece ser con **{incident_type}** (basado en: {keywords}).
+
+{reasoning}
+
+*Análisis realizado con embeddings de BD: {data_source}*
+
+¿Es correcto que el problema es con {incident_type}?"""
+                
+                return Command(update={
+                    "messages": messages + [AIMessage(content=confirmation_text)],
+                    "pending_confirmation": True,
+                    "pending_incident_type": incident_type,
+                    "identification_confidence": tool_output["confidence"],
+                    "identification_keywords": tool_output.get("keywords", []),
+                    "identification_source": "agent_with_history_and_db",
+                    "awaiting_user_input": True
+                })
+            
+            # Respuesta normal del agente
+            return Command(update={
+                "messages": messages + [AIMessage(content=agent_response)],
+                "awaiting_user_input": True
+            })
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error procesando con agente, historial y BD: {e}")
+            return await self._fallback_identification_with_history(state, last_message, all_user_messages, messages)
+    
+    async def _fallback_identification_with_history(self, state: EroskiState, last_message: str, 
+                                                  all_user_messages: List[str], messages: List) -> Command:
+        """Identificación de fallback SIN agente React pero CON análisis histórico y BD"""
+        try:
+            # Combinar mensaje actual con historial para análisis
+            if all_user_messages:
+                # Dar más peso al mensaje actual pero considerar historial
+                combined_input = f"{last_message} | HISTORIAL: {' | '.join(all_user_messages[-3:])}"
+            else:
+                combined_input = last_message
+            
+            # Usar la versión async de la tool de identificación con contexto histórico
+            tool_result = await self.identify_tool.identify_incident_type_async(combined_input)
+            
+            if tool_result["confidence"] >= 0.75:
+                # Alta confianza - confirmar
+                incident_type = tool_result["incident_type"]
+                reasoning = tool_result.get("reasoning", "")
+                keywords = ", ".join(tool_result.get("keywords", []))
+                data_source = tool_result.get("data_source", "unknown")
+                
+                # Mencionar si se usó información histórica y BD
+                historical_note = ""
+                if len(all_user_messages) > 1:
+                    historical_note = "\n\n*He considerado nuestro historial de conversación previo y los embeddings precomputados en BD.*"
+                elif data_source == "langchain_retriever":
+                    historical_note = "\n\n*Identificación basada en embeddings precomputados de BD.*"
+                
+                response_text = f"""He identificado que tu problema parece ser con **{incident_type}** (keywords: {keywords}).
+
+{reasoning}{historical_note}
+
+¿Es correcto que el problema es con {incident_type}?"""
+                
+                return Command(update={
+                    "messages": messages + [AIMessage(content=response_text)],
+                    "pending_confirmation": True,
+                    "pending_incident_type": incident_type,
+                    "identification_confidence": tool_result["confidence"],
+                    "identification_source": "fallback_with_history_and_db",
+                    "awaiting_user_input": True
+                })
+            
+            else:
+                # Baja confianza - usar información histórica para hacer preguntas más específicas
+                specific_question = self._generate_specific_question_from_history(all_user_messages, tool_result)
+                
+                return Command(update={
+                    "messages": messages + [AIMessage(content=specific_question)],
+                    "awaiting_user_input": True
+                })
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error en fallback con historial y BD: {e}")
+            return Command(update={
+                "messages": messages + [
+                    AIMessage(content="Disculpa, no pude procesar tu mensaje. ¿Puedes describir el problema de otra manera?")
+                ],
+                "error_count": state.get("error_count", 0) + 1,
+                "awaiting_user_input": True
+            })
+    
+    def _create_historical_context(self, user_messages: List[str]) -> str:
+        """Crear contexto histórico legible para el agente"""
+        if not user_messages:
+            return "Sin historial previo."
+        
+        context_lines = []
+        for i, msg in enumerate(user_messages, 1):
+            context_lines.append(f"{i}. {msg}")
+        
+        return f"Mensajes anteriores del usuario:\n" + "\n".join(context_lines)
+    
+    def _generate_specific_question_from_history(self, user_messages: List[str], tool_result: Dict) -> str:
+        """Generar pregunta específica basada en el historial y resultado de baja confianza"""
+        try:
+            # Analizar qué tipo de información falta basándose en el historial
+            combined_text = " ".join(user_messages).lower()
+            
+            # Detectar qué información específica podría estar faltando
+            missing_equipment = not any(equip in combined_text for equip in 
+                                      ["balanza", "tpv", "caja", "impresora", "ordenador", "terminal"])
+            missing_symptoms = not any(symp in combined_text for symp in 
+                                     ["no funciona", "error", "problema", "fallo", "no enciende"])
+            
+            if missing_equipment and missing_symptoms:
+                return """He revisado nuestro historial pero necesito información más específica.
+
+¿Puedes contarme:
+- ¿Qué equipo específico está fallando? (balanza, caja registradora, impresora, ordenador...)
+- ¿Cuál es el síntoma exacto? (no enciende, error en pantalla, no imprime...)"""
+            
+            elif missing_equipment:
+                return """Veo que mencionas un problema, pero necesito saber qué equipo específico está fallando.
+
+¿Es problema con:
+- 🔢 **Balanza** (pesado, etiquetas, precios)
+- 💰 **TPV/Caja** (pagos, tickets, terminal)  
+- 🖨️ **Impresora** (no imprime, atascos, cartuchos)
+- 🌐 **Red/Internet** (conexión, WiFi, lentitud)
+- 💻 **Ordenador** (sistema, aplicaciones)"""
+            
+            elif missing_symptoms:
+                equipment_mentioned = None
+                for equip in ["balanza", "tpv", "caja", "impresora", "ordenador"]:
+                    if equip in combined_text:
+                        equipment_mentioned = equip
+                        break
+                
+                if equipment_mentioned:
+                    return f"""Entiendo que es un problema con {equipment_mentioned}. ¿Puedes ser más específico sobre qué está pasando?
+
+Por ejemplo:
+- ¿No enciende?
+- ¿Muestra algún error en pantalla?
+- ¿No responde?
+- ¿Funciona mal?"""
+            
+            # Pregunta genérica si no se puede determinar qué falta
+            return """Basándome en nuestro historial, necesito más detalles específicos sobre el problema técnico.
+
+¿Puedes describir:
+1. ¿Qué equipo está fallando exactamente?
+2. ¿Cuál es el síntoma específico?
+3. ¿Cuándo empezó el problema?"""
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error generando pregunta específica: {e}")
+            return "¿Puedes darme más detalles sobre el problema técnico que estás experimentando?"
+    
     def _format_chat_history(self, messages: List) -> str:
         """Formatear historial de mensajes para el agente"""
         try:
@@ -1275,9 +1509,11 @@ class IdentificacionNode(BaseNode):
             self.logger.error(f"❌ Error formateando historial: {e}")
             return "Error al cargar historial."
 
+
 # =============================================================================
 # FUNCIÓN FACTORY PARA EL NODO
 # =============================================================================
+
 
 async def identificacion_node(state: EroskiState) -> Command:
     """

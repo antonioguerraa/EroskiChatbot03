@@ -332,7 +332,7 @@ class IncidentManager:
     # PERSISTENCIA
     # =========================================================================
     
-    def _update_incident(self, incident_id: str, updates: Dict[str, Any], source_node: str) -> bool:
+    def _update_incident(self, incident_id: str, updates: Dict[str, Any]) -> bool:
         """Actualizar incidencia existente"""
         try:
             incidents_data = self._load_incidents()
@@ -463,7 +463,6 @@ def get_incident_manager(config: Optional[IncidentConfig] = None) -> IncidentMan
     
     if _incident_manager_instance is None:
         _incident_manager_instance = IncidentManager(config)
-    print(f"👹👹👹 Instnacia de get_incident manager {_incident_manager_instance}")
     
     return _incident_manager_instance
 

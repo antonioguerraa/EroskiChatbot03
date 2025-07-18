@@ -29,6 +29,7 @@ class IdentificadorOrquestadorNode:
 
     async def execute(self, state: EroskiState) -> Command:
         # Si el usuario ya está autenticado, no repetir
+        print("🤖🤖🤖Nodo Orquestador🤖🤖🤖")
         return Command(update={
             "current_node": self.node_name,
             "last_activity": datetime.now()

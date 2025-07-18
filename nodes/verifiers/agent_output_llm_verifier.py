@@ -30,37 +30,40 @@ class AgentOutputLLMVerifier:
         self.parser = JsonOutputParser(pydantic_object=AgentOutputSchema)
         self.prompt = ChatPromptTemplate.from_template(
             """
-Eres un asistente experto que analiza la salida de un agente de soporte técnico de Eroski.
+Eres un asistente experto que evalúa la respuesta generada por un agente de soporte técnico de Eroski.
 
-Tu tarea es:
-1. Determinar si el agente ha identificado claramente el problema del usuario.
-2. Evaluar si necesita confirmación.
-3. Determinar si se encontró una solución.
-4. Proporcionar un mensaje listo para enviar al usuario.
+Tu objetivo es analizar si el agente:
+1. Ha identificado claramente el problema del usuario.
+2. Necesita confirmar con el usuario si la identificación o la solución es correcta.
+3. Ha propuesto una solución específica al problema.
+4. Ha formulado una respuesta clara y útil para el usuario.
 
-Contexto:
+Contexto relevante:
 - Tipo de incidencia: {incident_type}
 - Último mensaje del usuario: {last_user_message}
-- Respuesta del agente:
+
+Respuesta generada por el agente:
 \"\"\"
 {agent_output}
 \"\"\"
 
-INSTRUCCIONES:
+🔧 INSTRUCCIONES:
+Analiza la respuesta del agente y genera un objeto JSON (sin formato Markdown) con los siguientes campos:
 
-Responde en JSON (sin markdown) con los siguientes campos:
 {{
-  "problem_identified": bool,
-  "confidence": float entre 0.0 y 1.0,
-  "problema": string,
-  "requires_confirmation": bool,
-  "message_to_user": string
+  "problem_identified": booleano,          // ¿El agente ha identificado un problema específico?
+  "confidence": número entre 0.0 y 1.0,    // Grado de certeza sobre la identificación del problema
+  "problema": texto,                       // Descripción del problema identificado o "" si no hay
+  "requires_confirmation": booleano,       // ¿Es necesario que el usuario confirme si la solución resuelve el problema?
+  "message_to_user": texto,                // Mensaje que el sistema debe enviar al usuario
+  "solution_content": texto                // Solución propuesta por el agente o "" si no hay
 }}
 
--si el agente proporciona una solución, debe pedir al usuario confirmación sobre si la solución propuesta resuelva la incidencia. En este caso, requires confirmation se pondrá a True
--requires confirmation es False si el usuario debe proporcionar informacion adicional para resolver el problema.
--message_to_user es el mensaje que se enviará al usuario.
-
+Completa todos los campos del objeto JSON y asegúrate de que el grado de certeza esté entre 0.0 y 1.0.
+IMPORTANTE:
+1. En el mensaje al usuario, ("message_to_user") incluye toda la solución propuesta por el agente.
+2. Cuando haya una solución propuesta, extrae la solucion del mensaje y reescribela en el campo: "solution_content"
+3. Asegurate que se genera el campo "solution_content" con la solución propuesta por el agente o con "" si no la hay
 """
         )
 
@@ -73,13 +76,13 @@ Responde en JSON (sin markdown) con los siguientes campos:
 
         try:
             chain = self.prompt | self.llm | self.parser
-            print("👹check 1")
             result = chain.invoke(input_data)
-            print(f"result: {result}")
-            print("👹check 2")
+            #print(f"👹result: {result}")
             resultado_formato = self._format_result(result, state)
-            print(f"resultado_formato: {resultado_formato}")
-            print("👹check 3")
+            #print(f"👹resultado_formato: {resultado_formato}")
+            #for key, value in resultado_formato.items():
+            #    print(f"👹\nkey: {key}, \nvalue: {value}")
+
             return resultado_formato
 
         except Exception as e:
@@ -98,11 +101,14 @@ Responde en JSON (sin markdown) con los siguientes campos:
             "problem_description": result.get("problema"),
             "problem_identified": result.get("problem_identified", False),
             "pending_confirmation": result.get("requires_confirmation", False),
-            "messages": state.get("messages", []) + [
+            "messages": [
                 AIMessage(content=result.get("message_to_user", "¿Podrías proporcionar más detalles?"))
             ],
-            "awaiting_user_input": True
+            "solution_content": result.get("solution_content", False),
+            "awaiting_user_input": True,
+            "confidence": result.get("confidence", 0.0)
         }
+
 
     def _get_last_user_message(self, state: Dict[str, Any]) -> str:
         for msg in reversed(state.get("messages", [])):
