@@ -5,17 +5,10 @@ Este nodo decide dinámicamente si usar la identificación por base de datos o m
 en función del estado del flujo de identificación del usuario.
 """
 
-from typing import Any
 from langgraph.types import Command
 from datetime import datetime
 from models.eroski_state import EroskiState
-from nodes.identificador_base_de_datos import identificador_base_de_datos_node
 #from nodes.identificacion_manual import identificacion_manual_node
-from nodes.identificador_manual_node import recoger_datos_empleado_node
-from nodes.classify_node import classify_node
-from nodes.identificacion_incidencia_node import identificacion_node
-from nodes.buscar_solucion_node import buscar_solucion_node
-from langchain_core.messages import AIMessage
 import logging
 
 class IdentificadorOrquestadorNode:

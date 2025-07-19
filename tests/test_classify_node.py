@@ -128,7 +128,7 @@ class ClassifyNodeTester:
         """Inicializar el nodo de clasificación"""
         try:
             # Importar dinámicamente el nodo
-            from nodes.classify_node import LLMDrivenClassifyNode
+            from nodes.old.classify_node import LLMDrivenClassifyNode
             self.node = LLMDrivenClassifyNode()
             self.logger.info("✅ Nodo classify inicializado correctamente")
             # Verificar que se carguen los tipos de incidencia
