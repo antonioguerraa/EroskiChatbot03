@@ -341,7 +341,7 @@ class HybridRAGSearcher:
         self.metrics: List[SearchMetrics] = []
         
         # Configuración de búsqueda
-        self.min_similarity_threshold = 0.40  # PARCHEADO
+        self.min_similarity_threshold = 0.55
         self.vector_weight = 0.6
         self.text_weight = 0.4
         self.max_results_per_method = 8

@@ -1,9 +1,24 @@
 {
   "rag_settings": {
-    "similarity_threshold": 0.55,   Más permisivo = más resultados
-    "vector_weight": 0.6,          // Peso búsqueda vectorial
-    "text_weight": 0.4,            // Peso búsqueda texto
-    "cache_ttl_minutes": 60,       // Tiempo vida cache
-    "enable_analytics": true       // Métricas automáticas
+    "similarity_threshold": 0.40,
+    "vector_weight": 0.6,
+    "text_weight": 0.4,
+    "cache_ttl_minutes": 60,
+    "cache_max_size": 200,
+    "enable_context_enrichment": true,
+    "enable_query_expansion": true,
+    "enable_analytics": true
+  },
+  "search_methods": {
+    "default": ["vector", "text", "keyword"],
+    "fallback": ["text"],
+    "precision": ["vector"],
+    "broad": ["vector", "text", "keyword", "fuzzy"]
+  },
+  "performance": {
+    "connection_pool_min": 3,
+    "connection_pool_max": 15,
+    "query_timeout_seconds": 30,
+    "max_parallel_searches": 3
   }
 }

@@ -23,6 +23,16 @@ from utils.llm.providers import get_llm, get_vectorizer
 
 logger = logging.getLogger(__name__)
 
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+
+
+
 @dataclass
 class TechnicalTerm:
     """Estructura de un término técnico"""
@@ -90,28 +100,29 @@ class TechnicalDictionaryGenerator:
         """
         Proceso completo de generación del diccionario técnico
         """
-        logger.info("🚀 Iniciando generación automática del diccionario técnico")
+        logging.info("🚀 Iniciando generación automática del diccionario técnico")
+
         
         try:
             # 1. Extraer términos de manuales existentes
             manual_terms = await self._extract_terms_from_manuals()
-            logger.info(f"   📚 Extraídos {len(manual_terms)} términos de manuales")
+            logging.info(f"   📚 Extraídos {len(manual_terms)} términos de manuales")
             
             # 2. Analizar consultas históricas de usuarios
             user_terms = await self._extract_terms_from_user_queries()
-            logger.info(f"   👥 Extraídos {len(user_terms)} términos de consultas")
+            logging.info(f"   👥 Extraídos {len(user_terms)} términos de consultas")
             
             # 3. Generar sinónimos con LLM
             enhanced_terms = await self._enhance_terms_with_llm(manual_terms, user_terms)
-            logger.info(f"   🤖 Mejorados {len(enhanced_terms)} términos con LLM")
+            logging.info(f"   🤖 Mejorados {len(enhanced_terms)} términos con LLM")
             
             # 4. Detectar patrones automáticamente
             pattern_terms = await self._detect_usage_patterns(enhanced_terms)
-            logger.info(f"   🔍 Detectados {len(pattern_terms)} patrones de uso")
+            logging.info(f"   🔍 Detectados {len(pattern_terms)} patrones de uso")
             
             # 5. Validar y filtrar términos
             validated_terms = await self._validate_and_filter_terms(pattern_terms)
-            logger.info(f"   ✅ Validados {len(validated_terms)} términos finales")
+            logging.info(f"   ✅ Validados {len(validated_terms)} términos finales")
             
             # 6. Organizar en diccionario estructurado
             self.dictionary = self._organize_dictionary(validated_terms)
@@ -119,11 +130,11 @@ class TechnicalDictionaryGenerator:
             # 7. Guardar diccionario
             await self._save_dictionary()
             
-            logger.info("✅ Diccionario técnico generado exitosamente")
+            logging.info("✅ Diccionario técnico generado exitosamente")
             return self.dictionary
             
         except Exception as e:
-            logger.error(f"❌ Error generando diccionario: {e}")
+            logging.error(f"❌ Error generando diccionario: {e}")
             raise
     
     async def _extract_terms_from_manuals(self) -> List[Dict[str, Any]]:
@@ -869,13 +880,14 @@ async def generate_technical_dictionary():
     """Función principal para generar el diccionario técnico"""
     
     print("🚀 GENERADOR AUTOMÁTICO DE DICCIONARIO TÉCNICO EROSKI")
-    print("=" * 60)
-    
+    print("=1" * 60)
     generator = TechnicalDictionaryGenerator()
+    print("=2" * 60)
     
     try:
         # Generar diccionario completo
         dictionary = await generator.generate_complete_dictionary()
+        print("=3" * 60)
         
         print(f"\n✅ DICCIONARIO GENERADO EXITOSAMENTE")
         print(f"📊 Total términos: {len([k for k, v in dictionary.items() if k == v.term])}")

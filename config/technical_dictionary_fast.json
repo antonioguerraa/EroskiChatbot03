@@ -1,0 +1,262 @@
+{
+  "mistral": {
+    "term": "mistral",
+    "category": "equipos",
+    "confidence": 1.0,
+    "frequency": 18,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "balanza": {
+    "term": "balanza",
+    "category": "equipos",
+    "confidence": 1.0,
+    "frequency": 670,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "etiqueta": {
+    "term": "etiqueta",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 139,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "ticket": {
+    "term": "ticket",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 134,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "peso": {
+    "term": "peso",
+    "category": "equipos",
+    "confidence": 1.0,
+    "frequency": 200,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "tara": {
+    "term": "tara",
+    "category": "equipos",
+    "confidence": 1.0,
+    "frequency": 85,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "precio": {
+    "term": "precio",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 58,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "configuración": {
+    "term": "configuración",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 78,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "código": {
+    "term": "código",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 130,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "teclado": {
+    "term": "teclado",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 61,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "display": {
+    "term": "display",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 46,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "producto": {
+    "term": "producto",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 52,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "menú": {
+    "term": "menú",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 123,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "error": {
+    "term": "error",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 20,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "pantalla": {
+    "term": "pantalla",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 53,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "dibal": {
+    "term": "dibal",
+    "category": "equipos",
+    "confidence": 1.0,
+    "frequency": 51,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "memoria": {
+    "term": "memoria",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 34,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "imprimir": {
+    "term": "imprimir",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 81,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.589042",
+    "source": "fast_extraction"
+  },
+  "pesaje": {
+    "term": "pesaje",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 15,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "función": {
+    "term": "función",
+    "category": "general",
+    "confidence": 1.0,
+    "frequency": 15,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "calibrar": {
+    "term": "calibrar",
+    "category": "equipos",
+    "confidence": 0.27999999999999997,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.586052",
+    "source": "fast_extraction"
+  },
+  "modelo_gama": {
+    "term": "modelo_gama",
+    "category": "general",
+    "confidence": 0.2,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.586945",
+    "source": "fast_extraction"
+  },
+  "modelo_permite": {
+    "term": "modelo_permite",
+    "category": "general",
+    "confidence": 0.2,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.586945",
+    "source": "fast_extraction"
+  },
+  "calibre": {
+    "term": "calibre",
+    "category": "equipos",
+    "confidence": 0.27999999999999997,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.586945",
+    "source": "fast_extraction"
+  },
+  "modelo_rms": {
+    "term": "modelo_rms",
+    "category": "general",
+    "confidence": 0.4,
+    "frequency": 4,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  },
+  "botón": {
+    "term": "botón",
+    "category": "general",
+    "confidence": 0.3,
+    "frequency": 3,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:39:20.588030",
+    "source": "fast_extraction"
+  }
+}

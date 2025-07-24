@@ -1,0 +1,122 @@
+{
+  "mistral": {
+    "term": "mistral",
+    "category": "equipos",
+    "confidence": 0.27999999999999997,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "balanza": {
+    "term": "balanza",
+    "category": "equipos",
+    "confidence": 0.84,
+    "frequency": 6,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "precio": {
+    "term": "precio",
+    "category": "general",
+    "confidence": 0.2,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "etiqueta": {
+    "term": "etiqueta",
+    "category": "general",
+    "confidence": 0.7,
+    "frequency": 7,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "ticket": {
+    "term": "ticket",
+    "category": "general",
+    "confidence": 0.2,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "peso": {
+    "term": "peso",
+    "category": "equipos",
+    "confidence": 0.5599999999999999,
+    "frequency": 4,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "tara": {
+    "term": "tara",
+    "category": "equipos",
+    "confidence": 0.27999999999999997,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "configuración": {
+    "term": "configuración",
+    "category": "general",
+    "confidence": 0.3,
+    "frequency": 3,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "código": {
+    "term": "código",
+    "category": "general",
+    "confidence": 0.1,
+    "frequency": 1,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "teclado": {
+    "term": "teclado",
+    "category": "general",
+    "confidence": 0.1,
+    "frequency": 1,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "display": {
+    "term": "display",
+    "category": "general",
+    "confidence": 0.1,
+    "frequency": 1,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  },
+  "producto": {
+    "term": "producto",
+    "category": "general",
+    "confidence": 0.2,
+    "frequency": 2,
+    "synonyms": [],
+    "related_terms": [],
+    "last_updated": "2025-07-24T09:31:47.880982",
+    "source": "fast_extraction"
+  }
+}

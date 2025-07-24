@@ -29,6 +29,14 @@ from utils.llm.providers import get_vectorizer, get_llm
 
 logger = logging.getLogger(__name__)
 
+# Al inicio del archivo advanced_document_vectorizer.py, después de los imports:
+def convert_embedding_for_pgvector(embedding):
+    """Convierte embedding al formato correcto para pgvector"""
+    if not embedding:
+        return "[]"
+    clean_embedding = [float(val) if isinstance(val, (int, float)) and not (np.isnan(val) or np.isinf(val)) else 0.0 for val in embedding]
+    return f"[{', '.join(map(str, clean_embedding))}]"
+
 @dataclass
 class DocumentMetadata:
     """Metadatos estructurados del documento"""
@@ -922,7 +930,7 @@ class EnhancedVectorizationDatabase:
         await conn.execute("""
             INSERT INTO knowledge_base_enhanced (
                 chunk_id, chunk_text, chunk_text_processed,
-                chunk_embedding, chunk_embedding_with_metadata,
+                $4::vector, $5::vector,
                 documento_origen, tipo_equipo, marca, modelo, version_manual, idioma, hash_documento,
                 pagina_numero, posicion_x, posicion_y, posicion_width, posicion_height,
                 seccion_titulo, tipo_contenido, nivel_jerarquia,
@@ -940,8 +948,8 @@ class EnhancedVectorizationDatabase:
         chunk.chunk_id,
         chunk.texto_original,
         chunk.texto_procesado,
-        chunk.embedding,
-        chunk.embedding_con_metadatos,
+        convert_embedding_for_pgvector(chunk.embedding),
+        convert_embedding_for_pgvector(chunk.embedding_con_metadatos),
         chunk.documento_metadata.filename,
         chunk.documento_metadata.tipo_equipo,
         chunk.documento_metadata.marca,

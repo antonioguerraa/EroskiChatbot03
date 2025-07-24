@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
 from langchain_core.tools import tool, Tool
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain.schema.runnable import RunnableSequence
@@ -32,7 +32,6 @@ from langgraph.types import Command
 # Imports del proyecto
 from models.eroski_state import EroskiState
 from utils.llm.providers import get_llm, get_vectorizer
-from utils.construir_historico_mensajes import format_full_chat_history
 from config.settings import get_settings
 from nodes.tools.confirmation_tool import ConfirmationTool
 
@@ -40,10 +39,6 @@ from nodes.tools.confirmation_tool import ConfirmationTool
 import psycopg2
 import numpy as np
 from psycopg2.extras import RealDictCursor
-from utils.incident_manager import get_incident_manager
-from models.indentificacion_solucion import IdentificacionSolucion
-from models.unified_solution_response import UnifiedSolutionResponse
-
 
 logger = logging.getLogger(__name__)
 
@@ -489,22 +484,20 @@ Responde únicamente con "si" o "no".
         try:
             # Obtener información del estado
             messages = state.get("messages", [])
-            last_message = messages[-1]
-
             incident_type = state.get("incident_type", "")
             problem_identified = state.get("problem_identified", False)
             solution_found = state.get("solution_found", False)
             pending_confirmation = state.get("pending_confirmation", False)
             attempts = state.get("attempts", 0)
-            incident_id = state.get("incident_id", None)
-            if not incident_id:
-                incident_id = get_incident_manager().manage_incident(state)
-            logger.info(f"👹Incidente ID: {incident_id}👹")
-
-
-
-
             
+            if not messages:
+                return Command(update={
+                    "current_node": self.node_name,
+                    "messages": [AIMessage(content="¡Hola! ¿En qué puedo ayudarte hoy?")],
+                    "awaiting_user_input": True
+                })
+            
+            last_message = messages[-1]
             if not isinstance(last_message, HumanMessage):
                 return Command(update={
                     "current_node": self.node_name,
@@ -515,94 +508,58 @@ Responde únicamente con "si" o "no".
             
             # Base para actualizaciones del estado
             base_update = {
-                "incident_id": incident_id,
                 "current_node": self.node_name,
                 "last_activity": datetime.now(),
                 "attempts": attempts + 1
             }
-            if not incident_type:
-                # Preparar actualización base del estado
-                return Command(update={
-                    **base_update,
-                    "messages": [AIMessage(content="Primero debemos indentificar el tipo de incidencia.")],
-                    "incident_type_confirmed": False
-                })
+            
+            # Lógica de confirmación pendiente
+            if pending_confirmation:
+                self.logger.info("⏳ Procesando confirmación pendiente")
+                confirmation_result = await self.confirmation_tool.process_confirmation(user_input)
+                
+                if confirmation_result["confirmed"]:
+                    # Usuario confirmó el problema
+                    base_update.update({
+                        "problem_identified": True,
+                        "pending_confirmation": False,
+                        "problem_description": state.get("temp_problem_description", ""),
+                    })
+                    
+                    problem_desc = state.get("temp_problem_description", user_input)
+                    
+                    # LÍNEA CLAVE: Usar RAG optimizado para buscar solución
+                    self.logger.info(f"🔍 Buscando solución con RAG optimizado para: {problem_desc}")
+                    solution_content_manual = self.knowledge_base.buscar_solucion_rag(problem_desc)
+                    
+                    base_update.update({
+                        "solution_content": solution_content_manual,
+                        "messages": messages + [
+                            AIMessage(content=f"""✅ **Problema confirmado:** {problem_desc}
 
+{solution_content_manual}
 
-
-
+**¿Esta solución resuelve tu problema?** (Responde sí/no)""")
+                        ],
+                        "awaiting_user_input": True
+                    })
+                    
+                else:
+                    # Usuario no confirmó, pedir más información
+                    base_update.update({
+                        "pending_confirmation": False,
+                        "messages": messages + [
+                            AIMessage(content="Entiendo. ¿Podrías describir el problema con más detalle? Esto me ayudará a encontrar la solución más adecuada.")
+                        ],
+                        "awaiting_user_input": True
+                    })
+                
+                return Command(update=base_update)
+            
             # Lógica principal de identificación y búsqueda
             if not problem_identified:
                 self.logger.info(f"🔍 Identificando problema para incident_type: {incident_type}")
                 
-
-                if not last_message:
-                    # Primera vez - mostrar ejemplos
-                    response = self._mostrar_ejemplos_frecuentes(state.get("incident_type", ""))
-                    return Command(update={
-                        **base_update,
-                        "messages": state.get("messages", []) + [AIMessage(content=response)],
-                        "awaiting_user_input": True
-                    })
-
-                historial_formateado = format_full_chat_history(messages=messages)
-                try:
-                    result = await self.identificacion_solucion_chain.ainvoke({
-                        "incident_type": incident_type,
-                        "chat_history": historial_formateado})
-                    
-                    if result['problem_identified']:
-                        #Buscamos en el RAG
-                        logging.info(f"👹 problem_identified: {result['problem_identified']}")
-                        base_update.update({"problem_description":result['problem_description']})
-                        
-                        solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problem_description'])
-
-
-
-                        solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problem_description'])
-                        logging.info(f"👹 solucion manual rag: {solution_content_manual}")
-                        #Empezamos a buscar en el json. Primero lo cargamo
-                        problemas_dict = self.incidents_manager.get_problemas_soluciones(incident_type)
-                        agent_response_faq = self.agent_faq.invoke({
-                                                            "problema_identificado": result['problem_description'],
-                                                            "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)})
-                        
-                        logging.info(f"👹 solucion manual rag: {agent_response_faq}")
-                       
-                        solution_content_faq = agent_response_faq.get("solucion","No se identificó el problema")
-                        
-
-                        
-                        logging.info(f"👹 solution_content_faq: {solution_content_faq}")
-                        
-                        if "no se identificó" in solution_content_faq.lower():
-                            solution_content_faq = ""
-                        command = await self._fusionar_soluciones(
-                            manual_solution=solution_content_manual,
-                            faq_solution=solution_content_faq,
-                            problem_description=result['problem_description'],
-                            solution_attempts=solution_attempts)
-                        
-                        return command
-                    
-                    else:
-                        solution_attempts += 1
-                        return Command(update={
-                            **base_update,
-                            "messages": [
-                                AIMessage(content=result['message_to_user'])
-                            ],
-                            "solution_attempts":solution_attempts,
-                            "awaiting_user_input": True
-                        })
-                        
-
-                except:
-                    kk  
-
-
-
                 # Usar herramienta FAQ para identificar problema
                 result = self.faq_problem_tool.identify_problem(user_input, incident_type)
                 
@@ -787,73 +744,13 @@ Responde únicamente con "si" o "no".
         """Configura agente FAQ."""
         return self._setup_agent()  # Simplificado
     
-    def _setup_identificacion_solucion_chain(self) -> RunnableSequence:
-        """Crea una cadena que analiza si el usuario ha descrito un problema técnico claro."""
-
-        parser = JsonOutputParser(pydantic_object=IdentificacionSolucion)
-        
-        prompt = PromptTemplate(
-            template="""Eres un asistente técnico de Eroski.
-
-        Tu tarea es leer la conversación reciente y decidir si el usuario ha descrito un problema técnico **con suficiente claridad**.
-
-        TIPO DE EQUIPO: {incident_type}
-
-        Si el usuario **no ha dado detalles concretos**, devuelve un mensaje amable pidiendo más información.
-
-        Si el usuario **describe claramente el problema** (por ejemplo: "la balanza no imprime etiquetas"), extrae el problema identificado y su confianza.
-
-        Si el usuario menciona expresamente que quiere hablar con un supervisor, o si da a entender que el problema no se ha resuelto adecuadamente, o que necesita ayuda adicional, entonces devuelve `"escalation_needed": true`.
-        En todos los demás casos, devuelve `"escalation_needed": false`.
-
-        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado. El campo `solution_content` debe estar vacío.
-
-        Ejemplo de json valido:
-
-
-        Devuelve un JSON en este formato (sin markdown):
-
-        {format_instructions}
-
-        Ejemplo de json valido:
-        {{
-        "problem_identified": true,
-        "confidence": 0.95,
-        "problema": "La balanza no imprime etiquetas",
-        "requires_confirmation": false,
-        "message_to_user": "Gracias por la información. Ahora intentaré ayudarte con este problema.",
-        "solution_content": "",
-        "escalation_needed": false
-        }}
-
-
-        CONVERSACIÓN RECIENTE:
-        {chat_history}
-        """,
-            input_variables=["chat_history", "incident_type"],
-            partial_variables={"format_instructions": parser.get_format_instructions()}
-        )
-
-        return prompt | self.llm | parser
+    def _setup_identificacion_solucion_chain(self):
+        """Configura chain de identificación."""
+        return RunnableLambda(lambda x: {"problema": x, "confidence": 0.5})
     
     def _setup_solution_fusion_chain(self):
         """Configura chain de fusión de soluciones."""
         return RunnableLambda(lambda x: f"Solución fusionada: {x}")
 
-    def _mostrar_ejemplos_frecuentes(self, incident_type: str) -> str:
-        """Muestra ejemplos de problemas frecuentes al usuario."""
-        ejemplos = self.incidents_manager.get_ejemplos_frecuentes(incident_type, 3)
-        
-        if not ejemplos:
-            return f"¿Podrías describir el problema que tienes con {incident_type}?"
-        
-        ejemplos_text = "\n".join([f"• {ej}" for ej in ejemplos])
-        
-        return f"""Algunos problemas frecuentes con {incident_type} son:
-
-{ejemplos_text}
-
-¿Cuál de estos se parece a tu problema o podrías describir qué está ocurriendo?"""
-    
 # Mantener compatibilidad con código existente
 EroskiKnowledgeBase = OptimizedEroskiKnowledgeBase
