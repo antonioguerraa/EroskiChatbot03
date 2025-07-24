@@ -1,15 +1,15 @@
 # =====================================================
-# nodes/escalate.py - Nodo de Escalación a Supervisor
+# nodes/escalate.py - MODIFICADO CON INCIDENT MANAGER
 # =====================================================
 """
-Nodo para escalación a supervisor o soporte técnico.
+Nodo de escalación con integración de IncidentManager.
 
-RESPONSABILIDADES:
-- Identificar contacto de escalación apropiado
-- Crear ticket en sistema externo (futuro)
-- Notificar a supervisor
-- Proporcionar información de contacto
-- Registrar motivo de escalación
+CAMBIOS IMPLEMENTADOS:
+- Importación de get_incident_manager
+- Implementación de _get_incident_manager() 
+- Implementación de _track_incident_state()
+- Uso de manage_incident en execute()
+- Guardado de datos de escalación en incident_database.json
 """
 
 from typing import Dict, Any, Optional, List
@@ -20,87 +20,128 @@ import logging
 
 from models.eroski_state import EroskiState
 from nodes.base_node import BaseNode
+from utils.incident_manager import get_incident_manager  # 🆕 NUEVO IMPORT
+
+
+# =============================================================================
+# CONFIGURACIÓN DE ESCALACIÓN
+# =============================================================================
+
+class EscalationType:
+    """Tipos de escalación disponibles"""
+    TECHNICAL = "technical"
+    SUPERVISOR = "supervisor"
+    IT_SUPPORT = "it_support"
+    EMERGENCY = "emergency"
+    TRAINING = "training"
+    ADMINISTRATIVE = "administrative"
+
+
+# =============================================================================
+# NODO DE ESCALACIÓN CON INCIDENT MANAGER
+# =============================================================================
 
 class EscalateToSupervisorNode(BaseNode):
     """
-    Nodo para escalación a supervisor o soporte técnico.
-    
-    CARACTERÍSTICAS:
-    - Determinación automática del tipo de escalación
-    - Contactos específicos por tipo de problema
-    - Creación de tickets de escalación
-    - Notificación automática (futuro)
+    Nodo para escalación a supervisor o soporte técnico con IncidentManager.
     """
     
     def __init__(self):
         super().__init__("EscalateToSupervisor")
+        self._incident_manager = None  # 🆕 NUEVO: Instancia del incident manager
         
         # Contactos de escalación por tipo
         self.escalation_contacts = {
-            "technical": {
+            EscalationType.TECHNICAL: {
                 "name": "Soporte Técnico",
                 "phone": "+34 946 211 000",
                 "email": "soporte.tecnico@eroski.es",
                 "hours": "24/7",
-                "priority": "alta"
+                "priority": "alta",
+                "department": "Soporte Técnico"
             },
-            "supervisor": {
+            EscalationType.SUPERVISOR: {
                 "name": "Supervisor de Tienda",
                 "phone": "Ext. 100",
                 "email": "supervisor@tienda.eroski.es",
                 "hours": "Horario de tienda",
-                "priority": "media"
+                "priority": "media",
+                "department": "Supervisión"
             },
-            "hr": {
-                "name": "Recursos Humanos",
-                "phone": "+34 946 211 100",
-                "email": "rrhh@eroski.es",
-                "hours": "L-V 9:00-17:00",
-                "priority": "baja"
-            },
-            "it": {
+            EscalationType.IT_SUPPORT: {
                 "name": "Soporte IT",
                 "phone": "+34 946 211 200",
                 "email": "it.support@eroski.es",
                 "hours": "L-V 8:00-20:00",
-                "priority": "alta"
+                "priority": "alta",
+                "department": "IT Support"
             },
-            "maintenance": {
-                "name": "Mantenimiento",
-                "phone": "+34 946 211 300",
-                "email": "mantenimiento@eroski.es",
+            EscalationType.EMERGENCY: {
+                "name": "Emergencias",
+                "phone": "112",
+                "email": "emergency@eroski.es",
                 "hours": "24/7",
-                "priority": "media"
+                "priority": "crítica",
+                "department": "Emergencias"
             }
-        }
-        
-        # Mapeo de tipos de problema a contactos
-        self.problem_to_contact = {
-            "tpv": "technical",
-            "impresora": "technical",
-            "scanner": "technical",
-            "red": "it",
-            "internet": "it",
-            "ordenador": "it",
-            "sistema": "it",
-            "usuario": "hr",
-            "contraseña": "hr",
-            "acceso": "hr",
-            "limpieza": "maintenance",
-            "mantenimiento": "maintenance",
-            "averıá": "maintenance",
-            "general": "supervisor"
         }
     
     def get_required_fields(self) -> List[str]:
-        return ["messages", "escalation_needed"]
+        """Campos requeridos en el estado"""
+        return ["messages"]
     
     def get_actor_description(self) -> str:
-        return "Gestiono escalaciones a supervisores y soporte técnico especializado"
+        """Descripción del rol del nodo"""
+        return ("Escalo problemas que no pueden resolverse automáticamente. "
+                "Analizo el contexto para derivar al contacto más apropiado y "
+                "proporciono información clara sobre los próximos pasos.")
+    
+    # =========================================================================
+    # 🆕 NUEVOS MÉTODOS PARA INCIDENT MANAGER
+    # =========================================================================
+    
+    def _get_incident_manager(self):
+        """Obtener instancia singleton del incident manager"""
+        if self._incident_manager is None:
+            self._incident_manager = get_incident_manager()
+        return self._incident_manager
+    
+    def _track_incident_state(self, state: dict, updates: dict = None) -> str:
+        """
+        🎯 HELPER METHOD: Actualizar y trackear estado de incidencia
+        
+        Args:
+            state: Estado actual del nodo
+            updates: Actualizaciones opcionales al estado
+            
+        Returns:
+            incident_id: ID de la incidencia
+        """
+        try:
+            # Aplicar updates si se proporcionan
+            if updates:
+                state = {**state, **updates}
+            
+            # Convertir a EroskiState si no lo es
+            eroski_state = dict(state)
+            
+            # Trackear con incident manager
+            incident_id = self._get_incident_manager().manage_incident(eroski_state)
+            
+            return incident_id
+            
+        except Exception as e:
+            # No fallar si hay error en tracking
+            self.logger.warning(f"⚠️ Error en incident tracking: {e}")
+            return state.get("incident_id", "ERROR-TRACKING")
+    
+    # =========================================================================
+    # MÉTODO EXECUTE MODIFICADO
+    # =========================================================================
     
     async def execute(self, state: EroskiState) -> Command:
         """
-        Ejecutar escalación a supervisor.
+        Ejecutar lógica principal de escalación CON INCIDENT MANAGER.
         
         Args:
             state: Estado actual del workflow
@@ -109,6 +150,13 @@ class EscalateToSupervisorNode(BaseNode):
             Command con la escalación procesada
         """
         try:
+            self.logger.info("🔥 === ESCALATE NODE EJECUTÁNDOSE ===")
+            
+            # 🆕 NUEVO: Obtener o crear incident_id
+            incident_id = state.get("incident_id", None)
+            if not incident_id:
+                incident_id = self._get_incident_manager().manage_incident(state)
+            
             # Determinar tipo de escalación
             escalation_type = self._determine_escalation_type(state)
             
@@ -118,15 +166,51 @@ class EscalateToSupervisorNode(BaseNode):
             # Crear ticket de escalación
             ticket_info = self._create_escalation_ticket(state, escalation_type)
             
+            # 🆕 NUEVO: Preparar updates para incident tracking
+            escalation_updates = {
+                "escalation_processed": True,
+                "escalation_type": escalation_type,
+                "escalation_contact": contact_info,
+                "escalation_ticket": ticket_info,
+                "escalacion_necesaria": True,
+                "razon_escalacion": state.get("escalation_reason", f"Escalado a {escalation_type}"),
+                "estado": "escalada",  # Estado para incident_database.json
+                "contenido_solucion": f"Escalado a {contact_info['department']}",
+                "timestamp_escalacion": datetime.now().isoformat()
+            }
+            
+            # 🆕 NUEVO: Trackear y guardar en incident_database.json
+            incident_id = self._track_incident_state(state, escalation_updates)
+            
             # Notificar escalación (futuro: integración con sistema externo)
             # await self._notify_escalation(ticket_info, contact_info)
             
             # Proporcionar información al usuario
-            return self._provide_escalation_info(state, contact_info, ticket_info)
+            escalation_message = self._provide_escalation_info(contact_info, ticket_info)
+            
+            self.logger.info(f"✅ Escalación procesada: {escalation_type} → {contact_info['department']}")
+            self.logger.info(f"💾 Incidencia guardada: {incident_id}")
+            
+            return Command(update={
+                "incident_id": incident_id,  # 🆕 NUEVO: Incluir incident_id
+                "messages": [AIMessage(content=escalation_message)],
+                "escalation_processed": True,
+                "escalation_type": escalation_type,
+                "escalation_contact": contact_info,
+                "escalation_ticket": ticket_info,
+                "flow_completed": True,
+                "awaiting_user_input": False,
+                "current_node": "escalate",
+                "last_activity": datetime.now()
+            })
             
         except Exception as e:
             self.logger.error(f"❌ Error en escalación: {e}")
             return self._provide_emergency_contacts(state)
+    
+    # =========================================================================
+    # MÉTODOS DE PROCESAMIENTO (LÓGICA ORIGINAL MEJORADA)
+    # =========================================================================
     
     def _determine_escalation_type(self, state: EroskiState) -> str:
         """Determinar tipo de escalación basado en el contexto"""
@@ -139,138 +223,139 @@ class EscalateToSupervisorNode(BaseNode):
         # Determinar basado en equipos mencionados
         affected_equipment = state.get("affected_equipment", "").lower()
         incident_description = state.get("incident_description", "").lower()
+        incident_type = state.get("incident_type", "").lower()
         
-        combined_text = f"{affected_equipment} {incident_description}"
+        # Palabras clave para escalación técnica
+        technical_keywords = ["tpv", "pos", "balanza", "impresora", "scanner", "red", "wifi", "internet"]
+        if any(keyword in affected_equipment or keyword in incident_description or keyword in incident_type 
+               for keyword in technical_keywords):
+            return EscalationType.TECHNICAL
         
-        # Buscar coincidencias con tipos de problema
-        for problem_keyword, contact_type in self.problem_to_contact.items():
-            if problem_keyword in combined_text:
-                return contact_type
+        # Palabras clave para IT
+        it_keywords = ["ordenador", "computadora", "sistema", "software", "aplicación", "programa"]
+        if any(keyword in affected_equipment or keyword in incident_description 
+               for keyword in it_keywords):
+            return EscalationType.IT_SUPPORT
         
-        # Verificar urgencia
-        urgency_level = state.get("urgency_level")
-        if urgency_level and hasattr(urgency_level, 'value') and urgency_level.value >= 4:
-            return "technical"  # Escalación técnica para urgencias críticas
+        # Emergencias
+        emergency_keywords = ["emergencia", "urgente", "peligro", "accidente", "fuego", "robo"]
+        if any(keyword in incident_description for keyword in emergency_keywords):
+            return EscalationType.EMERGENCY
         
-        # Default: supervisor
-        return "supervisor"
+        # Por defecto: supervisor
+        return EscalationType.SUPERVISOR
     
     def _get_contact_info(self, escalation_type: str) -> Dict[str, Any]:
-        """Obtener información de contacto para escalación"""
-        return self.escalation_contacts.get(escalation_type, self.escalation_contacts["supervisor"])
+        """Obtener información de contacto para el tipo de escalación"""
+        return self.escalation_contacts.get(escalation_type, self.escalation_contacts[EscalationType.SUPERVISOR])
     
     def _create_escalation_ticket(self, state: EroskiState, escalation_type: str) -> Dict[str, Any]:
         """Crear ticket de escalación"""
-        escalation_reason = state.get("escalation_reason", "Escalación automática")
+        ticket_id = f"ESC-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
-        ticket_info = {
-            "ticket_id": f"ESC-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        return {
+            "ticket_id": ticket_id,
+            "created_at": datetime.now().isoformat(),
             "escalation_type": escalation_type,
-            "employee_name": state.get("employee_name", ""),
-            "employee_id": state.get("employee_id", ""),
-            "store_id": state.get("store_id", ""),
-            "store_name": state.get("store_name", ""),
-            "escalation_reason": escalation_reason,
-            "original_problem": state.get("incident_description", ""),
-            "affected_equipment": state.get("affected_equipment", ""),
-            "urgency_level": str(state.get("urgency_level", "Media")),
-            "created_at": datetime.now(),
-            "status": "open"
+            "priority": self.escalation_contacts[escalation_type]["priority"],
+            "employee_info": {
+                "name": state.get("incident_user_name", "No identificado"),
+                "email": state.get("employee_email", ""),
+                "store": state.get("incident_store_name", ""),
+                "department": state.get("incident_department", "")
+            },
+            "incident_info": {
+                "type": state.get("incident_type", ""),
+                "description": state.get("incident_description", ""),
+                "affected_equipment": state.get("affected_equipment", "")
+            },
+            "escalation_reason": state.get("escalation_reason", "Escalación automática"),
+            "session_id": state.get("session_id", "")
         }
-        
-        self.logger.info(f"📋 Ticket de escalación creado: {ticket_info['ticket_id']}")
-        
-        return ticket_info
     
-    def _provide_escalation_info(self, state: EroskiState, contact_info: Dict[str, Any], 
-                                ticket_info: Dict[str, Any]) -> Command:
+    def _provide_escalation_info(self, contact_info: Dict[str, Any], ticket_info: Dict[str, Any]) -> str:
         """Proporcionar información de escalación al usuario"""
         
-        escalation_message = self._build_escalation_message(contact_info, ticket_info, state)
+        ticket_id = ticket_info["ticket_id"]
+        department = contact_info["department"]
+        contact_name = contact_info["name"]
+        phone = contact_info["phone"]
+        email = contact_info["email"]
+        hours = contact_info["hours"]
+        priority = contact_info["priority"]
         
-        return Command(update={
-            "escalation_processed": True,
-            "escalation_ticket": ticket_info,
-            "escalation_contact": contact_info,
-            "escalation_type": ticket_info["escalation_type"],
-            "ticket_created": True,
-            "messages": [AIMessage(content=escalation_message)],
-            "current_node": "escalate",
-            "last_activity": datetime.now(),
-            "awaiting_user_input": False,
-            "flow_completed": True
-        })
-    
-    def _build_escalation_message(self, contact_info: Dict[str, Any], 
-                                 ticket_info: Dict[str, Any], state: EroskiState) -> str:
-        """Construir mensaje de escalación"""
-        
-        escalation_reason = state.get("escalation_reason", "Escalación automática")
-        
-        return f"""🔼 **ESCALACIÓN PROCESADA**
+        escalation_message = f"""🎯 **Tu consulta ha sido escalada**
 
-Tu consulta ha sido escalada al equipo especializado apropiado.
+📋 **Información del ticket:**
+• **Número de ticket:** {ticket_id}
+• **Asignado a:** {department}
+• **Prioridad:** {priority.upper()}
 
-**📋 Ticket de Escalación:** `{ticket_info['ticket_id']}`
+📞 **Información de contacto:**
+• **Contacto:** {contact_name}
+• **Teléfono:** {phone}
+• **Email:** {email}
+• **Horario:** {hours}
 
-**👥 Contacto Asignado:**
-• **Departamento:** {contact_info['name']}
-• **Teléfono:** {contact_info['phone']}
-• **Email:** {contact_info['email']}
-• **Horario:** {contact_info['hours']}
+⏱️ **Próximos pasos:**
+1. Tu consulta ha sido registrada con prioridad {priority}
+2. El equipo de {department} revisará tu caso
+3. Te contactarán en breve para dar seguimiento
 
-**📝 Resumen:**
-• **Empleado:** {ticket_info['employee_name']}
-• **Tienda:** {ticket_info['store_name']}
-• **Problema:** {ticket_info['original_problem'][:100]}...
-• **Motivo de escalación:** {escalation_reason}
+📋 **Información importante:**
+• Guarda este número de ticket: **{ticket_id}**
+• Tenlo a mano cuando te contacten
+• Si necesitas hacer seguimiento, menciona este número
 
-**⏰ Tiempo de respuesta estimado:**
-• **Prioridad Alta:** 15-30 minutos
-• **Prioridad Media:** 1-2 horas
-• **Prioridad Baja:** 24 horas
-
-**📞 Contacto Inmediato:**
-Si es urgente, puedes contactar directamente:
-• **Teléfono:** {contact_info['phone']}
-• **Menciona el ticket:** `{ticket_info['ticket_id']}`
-
-**✅ Próximos pasos:**
-1. El equipo especializado será notificado automáticamente
-2. Recibirás una llamada o email en breve
-3. Mantén a mano el número de ticket para referencia
+🔧 **¿Necesitas contactar directamente?**
+• Teléfono: {phone}
+• Email: {email}
+• Horario de atención: {hours}
 
 ¡Gracias por tu paciencia! El equipo especializado se pondrá en contacto contigo pronto. 🤝"""
+        
+        return escalation_message
     
     def _provide_emergency_contacts(self, state: EroskiState) -> Command:
         """Proporcionar contactos de emergencia cuando falla la escalación"""
+        
+        # 🆕 NUEVO: Intentar guardar estado de error
+        try:
+            incident_id = self._track_incident_state(state, {
+                "escalation_failed": True,
+                "escalation_type": "emergency",
+                "estado": "error_escalacion",
+                "razon_escalacion": "Error técnico en escalación"
+            })
+        except:
+            incident_id = state.get("incident_id", "ERROR-UNKNOWN")
         
         emergency_message = """🚨 **CONTACTOS DE EMERGENCIA**
 
 Ha ocurrido un problema técnico con el sistema de escalación, pero puedes contactar directamente:
 
-**📞 Contactos Inmediatos:**
+📞 **Contactos Inmediatos:**
 
-**🔧 Soporte Técnico (24/7):**
+🔧 **Soporte Técnico (24/7):**
 • Teléfono: +34 946 211 000
 • Email: soporte.tecnico@eroski.es
 • Para: Problemas con TPV, impresoras, scanners
 
-**👨‍💼 Supervisor de Tienda:**
+👨‍💼 **Supervisor de Tienda:**
 • Teléfono: Ext. 100 (desde teléfono de tienda)
 • Para: Consultas generales, procedimientos
 
-**💻 Soporte IT:**
+💻 **Soporte IT:**
 • Teléfono: +34 946 211 200
 • Email: it.support@eroski.es
 • Horario: L-V 8:00-20:00
 • Para: Problemas de red, ordenadores, sistemas
 
-**🏥 Emergencias:**
+🏥 **Emergencias:**
 • Teléfono: 112
 • Para: Emergencias médicas o de seguridad
 
-**📋 Información a proporcionar:**
+📋 **Información a proporcionar:**
 • Tu nombre y número de empleado
 • Código de tienda
 • Descripción del problema
@@ -279,6 +364,7 @@ Ha ocurrido un problema técnico con el sistema de escalación, pero puedes cont
 ¡Disculpa las molestias técnicas! 🙏"""
         
         return Command(update={
+            "incident_id": incident_id,  # 🆕 NUEVO
             "escalation_processed": True,
             "escalation_type": "emergency",
             "escalation_failed": True,
@@ -307,7 +393,10 @@ Ha ocurrido un problema técnico con el sistema de escalación, pero puedes cont
             self.logger.error(f"❌ Error enviando notificación: {e}")
             return False
 
-# ========== WRAPPER PARA LANGGRAPH ==========
+
+# =============================================================================
+# FUNCIÓN WRAPPER PARA LANGGRAPH (SIN CAMBIOS)
+# =============================================================================
 
 async def escalate_supervisor_node(state: EroskiState) -> Command:
     """
@@ -321,3 +410,14 @@ async def escalate_supervisor_node(state: EroskiState) -> Command:
     """
     node = EscalateToSupervisorNode()
     return await node.execute(state)
+
+
+# =============================================================================
+# EXPORT PARA INTEGRACIÓN (SIN CAMBIOS)
+# =============================================================================
+
+__all__ = [
+    "EscalateToSupervisorNode",
+    "escalate_supervisor_node",
+    "EscalationType"
+]

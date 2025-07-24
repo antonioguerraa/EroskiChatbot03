@@ -12,7 +12,6 @@ from config.settings import get_settings
 from models.eroski_state import EroskiState
 from nodes.base_node import BaseNode
 from utils.llm.providers import get_llm
-from utils.construir_historico_mensajes import format_full_chat_history
 import json
 from nodes.tools.confirmation_tool import add_confirmation_tool_to_node
 
@@ -63,9 +62,6 @@ Responde solo con "modificar" o "continuar".
         
         mensaje_usuario = ultimo_msg.content.strip()
 
-
-
-
         if state.get("modificaciones_pendientes"):
             print(f"👹👹👹 modificaciones pendientes: {state.get('modificaciones_pendientes')}👹👹👹")
             return self._pending_confirmation(state, mensaje_usuario)
@@ -81,22 +77,21 @@ Responde solo con "modificar" o "continuar".
             "tienda_tentativa": state.get("tienda_tentativa"),
         }
 
+        logging.info(f"👹👹👹 datos actuales: {datos_actuales}👹👹👹")
 
         intento_tienda = state.get("intento_tienda", 0)
-        messages = state.get("messages", [])
-        historico_mensaje_usuario = format_full_chat_history(state.get("messages", []), 100)
-        logging.info(f"👹historico_mensaje_usuario: {historico_mensaje_usuario}")
-        logging.info(f"👹intento_tienda: {intento_tienda}")
+        max_intento_tienda = state.get("max_intento_tienda", 2)
 
+        logging.info(f"👹intento_tienda: {intento_tienda}")
         datos_extraidos = self._llm_extraccion(
             datos_actuales,
             mensaje_usuario,
-            historico_mensaje_usuario,
             intento_identificacion,
             intento_tienda
         )
 
-        logging.info(f"👹👹👹 datos extraidos: {datos_extraidos}👹👹👹")
+
+        print(f"👹👹👹 datos extraidos: {datos_extraidos}👹👹👹")
 
         nuevo_estado = state.copy()
         nuevo_estado["last_activity"] = datetime.now()
@@ -108,6 +103,7 @@ Responde solo con "modificar" o "continuar".
         tienda_llm = datos_extraidos.get("tienda")
         tienda_tentativa = datos_extraidos.get("tienda_tentativa")
 
+        print(f"👹👹👹\n\n\ntienda tentativa: {tienda_tentativa}\nintento tienda: {intento_tienda}\n\n\n👹👹👹")
 
         tienda_identificada = nuevo_estado["tienda_identificada"] 
         if not tienda_identificada:
@@ -121,28 +117,65 @@ Responde solo con "modificar" o "continuar".
         if datos_extraidos.get("seccion"):
             nuevo_estado["incident_department"] = datos_extraidos["seccion"]
         if datos_extraidos.get("authenticated"):
-            logging.info(f"👹authenticated: {datos_extraidos['authenticated']}")
-            nuevo_estado["authenticated"] = datos_extraidos["authenticated"]
-
-        nuevo_estado["messages"].append(AIMessage(content=datos_extraidos['respuesta']))    
+            logging.info(f"authenticated: {datos_extraidos['authenticated']}")
+            nuevo_estado["Authenticated"] = datos_extraidos["authenticated"]
             
 
-        logging.info(f"👹\n👹tienda_llm: {tienda_llm}, \
-                \n👹tienda_identificada: {tienda_identificada}, \
-                \n👹intento_tienda: {intento_tienda}, \
-                \n👹tienda_tentativa: {tienda_tentativa},\
-                \n👹tienda_tentativa: {tienda_tentativa},\
-                \n👹authenticated: {datos_extraidos['authenticated']}, \
-                \n👹respuesta: {datos_extraidos['respuesta']}")
-        
-        for key, value in nuevo_estado.items():
-            logging.info(f"👹{key}: {value}")
-        
-        
-        
-        return Command(update=nuevo_estado)
+        logging.info(f"👹tienda_llm: {tienda_llm}, \
+                \ntienda_identificada: {tienda_identificada}, \
+                \nintento_tienda: {intento_tienda}, \
+                \ntienda_tentativa: {tienda_tentativa},\
+                \ntienda_tentativa: {tienda_tentativa},\
+                \nauthenticated: {datos_extraidos['authenticated']}, \
+                \nrespuesta: {datos_extraidos['respuesta']}")
         
 
+        # 🚨 Control de tienda tentativa e intentos
+        if not tienda_llm and tienda_tentativa and not tienda_identificada:
+            intento_tienda += 1
+            print(f"👹👹👹nuevo intento de tienda👹👹👹")
+            nuevo_estado["intento_tienda"] = intento_tienda
+            nuevo_estado["tienda_tentativa"] = tienda_tentativa
+
+            if intento_tienda >= max_intento_tienda:
+                nuevo_estado["incident_store_name"] = tienda_tentativa
+                nuevo_estado["tienda_identificada"] = True
+                nuevo_estado["tienda_tentativa"] = tienda_tentativa
+
+                # ⚠️ Forzamos autenticación si ya están todos los campos
+                if nuevo_estado.get("incident_user_name") and nuevo_estado.get("incident_last_name") and nuevo_estado.get("incident_department"):
+                    nuevo_estado["authenticated"] = True
+                # Inicializa si no existe
+                mensajes = nuevo_estado.get("mensajes_pendientes", [])
+                # Añade un nuevo mensaje
+                mensajes.append(
+                    AIMessage(content=datos_extraidos.get("respuesta", f"He guardado la tienda '{tienda_llm}' como válida."))
+                )
+                # Vuelve a guardar en el estado
+                nuevo_estado["mensajes_pendientes"] = mensajes
+
+        elif tienda_llm and tienda_identificada:
+            nuevo_estado["incident_store_name"] = tienda_llm
+            nuevo_estado["tienda_identificada"] = True
+            nuevo_estado["tienda_tentativa"] = None
+            nuevo_estado["intento_tienda"] = 0
+
+        
+        # ✅ Si ya tenemos todos los datos, autenticamos
+        if (
+            nuevo_estado.get("incident_user_name")
+            and nuevo_estado.get("incident_last_name")
+            and nuevo_estado.get("incident_department")
+            and nuevo_estado.get("incident_store_name")
+        ):
+            nuevo_estado["authenticated"] = True
+
+        return Command(update={
+            **nuevo_estado,
+            "messages": [AIMessage(content=datos_extraidos.get("respuesta", "Gracias. Vamos ahora con la incidencia."))],
+            "current_node": "identificar_incidencia",
+            "awaiting_user_input": True
+        })
 
 
 
@@ -191,7 +224,6 @@ Responde solo con "modificar" o "continuar".
         intento_identificacion = nuevo_estado.get("intento_identificacion",0)
         datos_extraidos = self._llm_extraccion(datos_actuales, 
                                                mensaje_usuario,
-                                               historico_mensaje_usuario,
                                                intento_identificacion,
                                                intento_tienda,
                                                )
@@ -327,7 +359,7 @@ Responde solo con "modificar" o "continuar".
         for campo in campos:
             logging.info(f"👹campo1: {campo} - {nuevo_estado.get(campo, 'No especificado')}")
         nuevo_estado["last_activity"] = datetime.now()
-        datos_extraidos = self._llm_extraccion(datos_actuales, mensaje_usuario, historico_mensaje_usuario)
+        datos_extraidos = self._llm_extraccion(datos_actuales, mensaje_usuario)
         # ⚠️ Si el extractor devuelve un Command, lo devolvemos directamente
         if isinstance(datos_extraidos, Command):
             return datos_extraidos
@@ -485,7 +517,6 @@ Responde solo con "modificar" o "continuar".
     
     def _llm_extraccion(self, datos_actuales: Dict[str, Optional[str]], 
                         mensaje_usuario: str, 
-                        historico_mensaje_usuario: str,
                         intentos_identificacion: int = 0,
                         intento_tienda: int =0) -> dict:
         
@@ -626,7 +657,7 @@ No incluyas ningún texto fuera del JSON. Tu única salida debe ser el JSON.
       
 
 
-        system_prompt= f"""
+        system_prompt_ok= f"""
         Eres un asistente de Eroski. Tu tarea es extraer hasta 4 campos del mensaje del usuario:
 
         - nombre
@@ -636,7 +667,6 @@ No incluyas ningún texto fuera del JSON. Tu única salida debe ser el JSON.
 
         Si has identificado una tienda pero no está en la lista, guarda este dato en el campo `tienda_tentativa`.
         Si tienes los 4 campos (nombre, apellido, sección y tienda), pon el valor `authenticated` a True
-        considera hypermercado, hiper, hipermercado, super, supermercado como secciones válidades dentro del centro
         
         === DATOS ACTUALES DEL USUARIO ===
         {datos_actuales_text}
@@ -644,10 +674,6 @@ No incluyas ningún texto fuera del JSON. Tu única salida debe ser el JSON.
         === PARÁMETROS DE CONTEXTO ===
         - intentos_identificacion: {intentos_identificacion}
         - intento_tienda: {intento_tienda}
-
-        === HISTORICO DE MENSAJES ===
-        - Este es el historico de la conversación. Utilizalo para seguir el hilo y la coherencia de la conversación: {historico_mensaje_usuario}
-
 
         === INSTRUCCIONES DE EXTRACCIÓN ===
         - Solo actualiza un campo si el usuario lo menciona clara y directamente.
@@ -661,26 +687,76 @@ No incluyas ningún texto fuera del JSON. Tu única salida debe ser el JSON.
         - Si tienes los 4 campos (nombre, apellido, sección y tienda), da las gracias, muestra los datos identificados y di que pasas a recoger la incidencia.
         
         - Importante!, pide los campos que falten (Nombre, apellido, sección o tienda)
-        - Si la tienda identificada no está en la lista, indícaselo al usuario
+        - Si la tienda identificada no está en la lista, indícaselo al usuario:
+            - Si `intento_tienda` es 1 o 2 → Pide amablemente que vuelva a indicar la tienda.
+            - Si `intento_tienda` es 3 → Guarda la tienda proporcionada como `tienda_tentativa` y avisa que no se encontró, pero se usará igualmente. En este pon en la variable ´tienda´  el valor de ´tienda_tentativa´
+        - Si `tienda_tentativa` es igual a la tienda proporcionada por el usuario en este mensaje, y esta tienda **no está en la lista de tiendas válidas**, avísale educadamente que esa tienda no la encontrabas previamente.
+        - Si `tienda_tentativa` no es nula, es distinta de la tienda proporcionada en este mensaje, **y la nueva tienda tampoco está en la lista de tiendas válidas**, dile que esa nueva tienda tampoco la encuentras.
         - Si el campo nombre no tiene valor, pide amablemente el nombre
         - Si el campo apellido no tiene valor, pide amablemente el apellido
         - Si el campo sección no tiene valor, pide amablemente la sección
         - Pide todos los campos que falten en el mismo mensaje
         
-        - Analiza el histórico de mensajes, y reponde al usuario siguiendo el hilo de la conversación.
-        - Si el usuario insiste en incluir una tienda que no esta en la lista, acéptala como válida, e incluyela en el campo ´tienda´
-
-        . Si tienes todos los 4 campos, da las gracias, muestra los datos identificados y pregunta por la incidencia
         
+
+
+        === FORMATO DE SALIDA ===
+        Devuelve un JSON con los campos: nombre, apellido, tienda, tienda_tentativa, seccion, respuesta, y authenticated.
+        """
+        system_prompt= f"""
+        Eres un asistente de Eroski. Tu tarea es extraer hasta 4 campos del mensaje del usuario:
+
+        - nombre
+        - apellido
+        - seccion (Carnicería, Pescadería, Panadería, Caja, etc.)
+        - tienda (de esta lista: {', '.join(self.tiendas[:20])})
+
+        Si has identificado una tienda pero no está en la lista, guarda este dato en el campo `tienda_tentativa`.
+        Si tienes los 4 campos (nombre, apellido, sección y tienda), pon el valor `authenticated` a True
+        
+        === DATOS ACTUALES DEL USUARIO ===
+        {datos_actuales_text}
+
+        === PARÁMETROS DE CONTEXTO ===
+        - intentos_identificacion: {intentos_identificacion}
+        - intento_tienda: {intento_tienda}
+
+        === INSTRUCCIONES DE EXTRACCIÓN ===
+        - Solo actualiza un campo si el usuario lo menciona clara y directamente.
+        - Si no lo menciona, déjalo como null.
+        - No infieras. Por ejemplo, "problema con el TPV" no implica Caja.
+        - Si el usuario menciona un dato distinto al que ya teníamos registrado, considera que quiere modificarlo y actualízalo.
+
+        === INSTRUCCIONES PARA LA RESPUESTA AL USUARIO ===
+        - Si has actualizado algún dato respecto a los datos actuales, infórmaselo de forma clara y amable.
+            Ejemplo: "He actualizado tu sección a Panadería."
+        - Si tienes los 4 campos (nombre, apellido, sección y tienda), da las gracias, muestra los datos identificados y di que pasas a recoger la incidencia.
+        
+        - Importante!, pide los campos que falten (Nombre, apellido, sección o tienda)
+        - Si la tienda identificada no está en la lista, indícaselo al usuario:
+            - Si `intento_tienda` es 1 o 2 → Pide amablemente que vuelva a indicar la tienda.
+            - Si `intento_tienda` es 3 → Guarda la tienda proporcionada como `tienda_tentativa` y avisa que no se encontró, pero se usará igualmente. En este pon en la variable ´tienda´  el valor de ´tienda_tentativa´
+        - Si `tienda_tentativa` es igual a la tienda proporcionada por el usuario en este mensaje, y esta tienda **no está en la lista de tiendas válidas**, avísale educadamente que esa tienda no la encontrabas previamente.
+        - Si `tienda_tentativa` no es nula, es distinta de la tienda proporcionada en este mensaje, **y la nueva tienda tampoco está en la lista de tiendas válidas**, dile que esa nueva tienda tampoco la encuentras.
+        - Si el campo nombre no tiene valor, pide amablemente el nombre
+        - Si el campo apellido no tiene valor, pide amablemente el apellido
+        - Si el campo sección no tiene valor, pide amablemente la sección
+        - Pide todos los campos que falten en el mismo mensaje
+        
+        
+
 
         === FORMATO DE SALIDA ===
         Devuelve un JSON con los campos: nombre, apellido, tienda, tienda_tentativa, seccion, respuesta, y authenticated.
         """
 
+
+
         extraccion_prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{input}")
         ])
+        
         chain = extraccion_prompt | self.llm | parser
         try:
             respuesta = chain.invoke({"input": mensaje_usuario})
@@ -702,8 +778,6 @@ No incluyas ningún texto fuera del JSON. Tu única salida debe ser el JSON.
         # Si `self.llm` devuelve texto plano JSON, conviértelo:
         return data
     
-
-
     def _actualizar_estado(self, estado: EroskiState, datos_extraidos: dict) -> Command:
         """Actualiza el estado con los datos extraídos con el LLM si algún campo estaba vacío y ahora puede rellenarse."""
 

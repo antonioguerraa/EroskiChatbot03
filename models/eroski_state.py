@@ -98,7 +98,10 @@ class EroskiState(TypedDict, total=False):
     email_authen_tried: bool                     # Si el empleado está autenticado
     employee_id_authent_tried: bool                     # Si el empleado está autenticado
     intento_tienda: Optional[int]           # número de intentos para identificar la tienda
+    max_intento_tienda: Optional[int]           # número max de intentos para identificar la tienda
     tienda_identificada: bool               #si la tienda se identificó con el maestro tienda
+    max_intentos_identificacion: Optional[int] # Número máximo de intentos para identificar al usuario
+    intento_identificacion: Optional[int]     # Número de intentos para identificar al usuario
 
     # ========== CONVERSACIÓN ==========
     messages: Annotated[List[BaseMessage], add_messages]             # Historia de mensajes
@@ -116,6 +119,13 @@ class EroskiState(TypedDict, total=False):
     incident_department: Optional[str]
     incident_id: Optional[str]              # ID único de la incidencia
     incident_type: Optional[str]            # Tipo específico (desde JSON config)
+    incident_found: bool
+    incident_confidence: Optional[str]
+    incident_evidence: Optional[str]
+    incident_reasoning: Optional[str]
+    incident_needs_more_info: Optional[str]
+
+
     #incident_description: Optional[str]     # Descripción del problema
     problem_description: Optional[str]     # Descripción del problema
     incident_details: Optional[Dict[str, Any]] # Detalles específicos
@@ -130,6 +140,7 @@ class EroskiState(TypedDict, total=False):
     max_intent_tipo_incidencia: Optional[int] # numero máximo de intentos para clasificar la incidencia
     identification_attempts: Optional[int] # numero máximo de intentos para clasificar la incidencia
     incident_info_adicional: Optional[Dict[str, str]]
+    
     incident_info_adicional_required: Optional[bool]
     incident_info_adicional_completa: Optional[bool]
 
@@ -169,7 +180,6 @@ class EroskiState(TypedDict, total=False):
     awaiting_user_input: bool              # Si está esperando input del usuario
     pending_confirmation: bool            # Si está pendiente de confirmación
     modificaciones_pendientes: Optional[Dict[str, str]]
-    escalate_to_supervisor: bool         # Si requiere escalación al supervisor
     
 
     
@@ -221,23 +231,26 @@ def create_initial_eroski_state(
     now = datetime.now()
     
     return EroskiState(
-        itentos_identificar_usuario = 0,
+        max_intentos_identificacion = 10, # Número máximo de intentos para identificar al usuario
+        intento_identificacion = 0,     # Número de intentos para identificar al usuario
         #incident_info_adicional_completa = True,
         intento_tienda = 0,
+        max_intento_tienda = 2,
         tienda_identificada=False,
         busqueda_manual=True,
         busqueda_faq=True,
         max_intent_tipo_incidencia = 3,
         problem_identified = False,
-        escalate_to_supervisor=False,
-        #incident_type_confirmed = True,
-        #incident_type = "balanza",
-        #authenticated=True,
-        #incident_user_name = "Javier",
-        #incident_last_name = "Guerra",
+        escalation_needed=False,
+        incident_type_confirmed = True,
+        incident_found = True,
+        incident_type = "balanza",
+        authenticated=True,
+        incident_user_name = "Javier",
+        incident_last_name = "Guerra",
         #employee_email = "javier.guerra@gmail.com",
-        #incident_store_name = "Durango",
-        #incident_department = "Pescadería",
+        incident_store_name = "Center Durango",
+        incident_department = "Pescadería",
 
         # Identificación
         session_id=session_id,
@@ -257,7 +270,6 @@ def create_initial_eroski_state(
         # Resultado
         resolved=False,
         automated_resolution=False,
-        escalation_needed=False,
         ticket_created=False,
         follow_up_needed=False,
         solution_found=False,

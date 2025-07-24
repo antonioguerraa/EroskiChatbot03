@@ -1,23 +1,15 @@
 # =====================================================
-# nodes/finalize_node.py - Nodo de Finalización y Cierre
+# nodes/finalize_node.py - MODIFICADO CON INCIDENT MANAGER
 # =====================================================
 """
-Nodo mock para finalización exitosa de incidencias resueltas.
+Nodo de finalización con integración de IncidentManager.
 
-RESPONSABILIDADES FUTURAS:
-- Confirmar resolución exitosa con el usuario
-- Recopilar feedback y satisfacción del usuario
-- Actualizar sistemas de tickets/incidencias
-- Generar métricas de resolución
-- Cerrar sesión de forma ordenada
-- Ofrecer servicios adicionales
-
-ESTADO ACTUAL:
-- Implementación dummy/mock siguiendo estructura del proyecto
-- Análisis de resolución basado en el estado
-- Respuestas contextuales según tipo de solución
-- Registro de métricas básicas para análisis
-- Preparado para integración de sistemas externos
+CAMBIOS IMPLEMENTADOS:
+- Importación de get_incident_manager
+- Implementación de _get_incident_manager() 
+- Implementación de _track_incident_state()
+- Uso de manage_incident en execute()
+- Guardado de datos de finalización en incident_database.json
 """
 
 from typing import Dict, Any, Optional, List
@@ -28,6 +20,7 @@ import logging
 
 from models.eroski_state import EroskiState
 from nodes.base_node import BaseNode
+from utils.incident_manager import get_incident_manager  # 🆕 NUEVO IMPORT
 
 
 # =============================================================================
@@ -36,12 +29,12 @@ from nodes.base_node import BaseNode
 
 class ResolutionType:
     """Tipos de resolución disponibles"""
-    AUTOMATED = "automated"                     # Solución automática aplicada
-    MANUAL_GUIDED = "manual_guided"            # Usuario siguió pasos manuales
-    KNOWLEDGE_PROVIDED = "knowledge_provided"   # Se proporcionó información
-    PARTIAL_RESOLUTION = "partial_resolution"  # Resolución parcial
-    USER_SELF_RESOLVED = "user_self_resolved"  # Usuario resolvió por sí mismo
-    ESCALATED_RESOLVED = "escalated_resolved"  # Resuelto tras escalación
+    AUTOMATED = "automated"
+    MANUAL_GUIDED = "manual_guided"
+    KNOWLEDGE_PROVIDED = "knowledge_provided"
+    PARTIAL_RESOLUTION = "partial_resolution"
+    USER_SELF_RESOLVED = "user_self_resolved"
+    ESCALATED_RESOLVED = "escalated_resolved"
 
 
 class SatisfactionLevel:
@@ -54,32 +47,19 @@ class SatisfactionLevel:
 
 
 # =============================================================================
-# NODO DE FINALIZACIÓN PRINCIPAL
+# NODO DE FINALIZACIÓN CON INCIDENT MANAGER
 # =============================================================================
 
 class FinalizeNode(BaseNode):
     """
-    Nodo de finalización mock para cerrar incidencias resueltas exitosamente.
-    
-    DISEÑO:
-    - Analiza el contexto de resolución del estado
-    - Genera mensaje de cierre contextual y personalizado
-    - Recopila métricas de la sesión
-    - Proporciona información de contacto futuro
-    - Cierra la sesión de forma ordenada
-    
-    PREPARADO PARA:
-    - Integración con sistemas de tickets
-    - Recopilación de feedback del usuario
-    - Análisis de satisfacción automático
-    - Métricas de tiempo de resolución
-    - Notificaciones de cierre a supervisores
+    Nodo de finalización con integración de IncidentManager.
     """
     
     def __init__(self):
         super().__init__("finalize")
         self.resolutions_count = 0
         self.resolution_history = []
+        self._incident_manager = None  # 🆕 NUEVO: Instancia del incident manager
         
     def get_required_fields(self) -> List[str]:
         """Campos requeridos en el estado"""
@@ -91,9 +71,52 @@ class FinalizeNode(BaseNode):
                 "Confirmo la resolución con el usuario, recopilo feedback "
                 "y cierro la sesión de forma ordenada.")
     
+    # =========================================================================
+    # 🆕 NUEVOS MÉTODOS PARA INCIDENT MANAGER
+    # =========================================================================
+    
+    def _get_incident_manager(self):
+        """Obtener instancia singleton del incident manager"""
+        if self._incident_manager is None:
+            self._incident_manager = get_incident_manager()
+        return self._incident_manager
+    
+    def _track_incident_state(self, state: dict, updates: dict = None) -> str:
+        """
+        🎯 HELPER METHOD: Actualizar y trackear estado de incidencia
+        
+        Args:
+            state: Estado actual del nodo
+            updates: Actualizaciones opcionales al estado
+            
+        Returns:
+            incident_id: ID de la incidencia
+        """
+        try:
+            # Aplicar updates si se proporcionan
+            if updates:
+                state = {**state, **updates}
+            
+            # Convertir a EroskiState si no lo es
+            eroski_state = dict(state)
+            
+            # Trackear con incident manager
+            incident_id = self._get_incident_manager().manage_incident(eroski_state)
+            
+            return incident_id
+            
+        except Exception as e:
+            # No fallar si hay error en tracking
+            self.logger.warning(f"⚠️ Error en incident tracking: {e}")
+            return state.get("incident_id", "ERROR-TRACKING")
+    
+    # =========================================================================
+    # MÉTODO EXECUTE MODIFICADO
+    # =========================================================================
+    
     async def execute(self, state: EroskiState) -> Command:
         """
-        Ejecutar lógica principal de finalización.
+        Ejecutar lógica principal de finalización CON INCIDENT MANAGER.
         
         Args:
             state: Estado actual del workflow
@@ -103,6 +126,11 @@ class FinalizeNode(BaseNode):
         """
         try:
             self.logger.info("🎯 === FINALIZE NODE EJECUTÁNDOSE ===")
+            
+            # 🆕 NUEVO: Obtener o crear incident_id
+            incident_id = state.get("incident_id", None)
+            if not incident_id:
+                incident_id = self._get_incident_manager().manage_incident(state)
             
             # Analizar contexto de resolución
             resolution_context = self._analyze_resolution_context(state)
@@ -116,6 +144,24 @@ class FinalizeNode(BaseNode):
             # Crear registro de finalización
             finalization_record = self._create_finalization_record(state, resolution_type, session_metrics)
             
+            # 🆕 NUEVO: Preparar updates para incident tracking
+            incident_updates = {
+                "resolved": True,
+                "resolution_type": resolution_type,
+                "session_metrics": session_metrics,
+                "finalization_record": finalization_record,
+                "finalization_processed": True,
+                "flow_completed": True,
+                "session_closed": True,
+                "end_time": datetime.now(),
+                "estado": "resuelta",  # Estado para incident_database.json
+                "contenido_solucion": f"Finalización {resolution_type}",
+                "timestamp_cierre": datetime.now().isoformat()
+            }
+            
+            # 🆕 NUEVO: Trackear y guardar en incident_database.json
+            incident_id = self._track_incident_state(state, incident_updates)
+            
             # Generar mensaje de cierre contextual
             finalization_message = self._generate_finalization_message(
                 resolution_context, resolution_type, session_metrics, finalization_record
@@ -126,8 +172,10 @@ class FinalizeNode(BaseNode):
             self.resolution_history.append(finalization_record)
             
             self.logger.info(f"✅ Finalización procesada: {resolution_type} | Tiempo: {session_metrics['resolution_time_minutes']:.1f}min")
+            self.logger.info(f"💾 Incidencia guardada: {incident_id}")
             
             return Command(update={
+                "incident_id": incident_id,  # 🆕 NUEVO: Incluir incident_id
                 "messages": [AIMessage(content=finalization_message)],
                 "finalization_processed": True,
                 "resolution_type": resolution_type,
@@ -146,129 +194,69 @@ class FinalizeNode(BaseNode):
             self.logger.error(f"❌ Error en finalize node: {e}")
             return self._handle_finalization_error(state, str(e))
     
+    # =========================================================================
+    # MÉTODOS DE ANÁLISIS Y PROCESAMIENTO (MANTIENEN LÓGICA ORIGINAL)
+    # =========================================================================
+    
     def _analyze_resolution_context(self, state: EroskiState) -> Dict[str, Any]:
-        """
-        Analizar contexto completo de la resolución.
-        
-        Args:
-            state: Estado actual
-            
-        Returns:
-            Diccionario con contexto analizado
-        """
-        context = {
-            "resolution_confirmed": state.get("resolved", False),
+        """Analizar contexto completo de la resolución."""
+        return {
+            "resolved": state.get("resolved", False),
             "solution_found": state.get("solution_found", False),
             "solution_type": state.get("solution_type", "unknown"),
-            "solution_content": state.get("solution_content", ""),
-            "satisfaction_score": state.get("satisfaction_score"),
+            "incident_type": state.get("incident_type", "unknown"),
             "automated_resolution": state.get("automated_resolution", False),
-            "user_info": {
-                "name": state.get("incident_user_name", "Usuario"),
-                "email": state.get("employee_email", "No proporcionado"),
-                "store": state.get("incident_store_name", "No identificada"),
-                "department": state.get("incident_department", "No especificado")
-            },
-            "incident_info": {
-                "type": state.get("incident_type", "No identificado"),
-                "description": state.get("incident_description", "No proporcionada"),
-                "code": state.get("incident_id", "No asignado"),
-                "equipment": state.get("affected_equipment", "No especificado")
-            },
-            "process_info": {
-                "session_id": state.get("session_id", "unknown"),
-                "execution_path": state.get("execution_path", []),
-                "total_attempts": state.get("attempts", 0),
-                "identification_attempts": state.get("identification_attempts", 0),
-                "error_count": state.get("error_count", 0),
-                "start_time": state.get("start_time"),
-                "messages_count": len(state.get("messages", []))
-            }
+            "escalation_used": state.get("escalation_processed", False),
+            "user_satisfaction": state.get("satisfaction_score"),
+            "attempts_made": state.get("attempts", 0),
+            "identification_attempts": state.get("identification_attempts", 0)
         }
-        
-        self.logger.info(f"🎯 Resolución confirmada: {context['resolution_confirmed']}")
-        self.logger.info(f"🔧 Tipo solución: {context['solution_type']}")
-        self.logger.info(f"🤖 Automatizada: {context['automated_resolution']}")
-        
-        return context
     
     def _determine_resolution_type(self, context: Dict[str, Any]) -> str:
-        """
-        Determinar tipo específico de resolución basado en contexto.
-        
-        Args:
-            context: Contexto analizado
-            
-        Returns:
-            Tipo de resolución
-        """
+        """Determinar tipo de resolución basado en el contexto."""
         if context["automated_resolution"]:
             return ResolutionType.AUTOMATED
-        
-        elif context["solution_type"] in ["manual", "step_by_step"]:
-            return ResolutionType.MANUAL_GUIDED
-        
-        elif context["solution_type"] in ["information", "knowledge"]:
-            return ResolutionType.KNOWLEDGE_PROVIDED
-        
-        elif context["satisfaction_score"] and context["satisfaction_score"] < 4:
-            return ResolutionType.PARTIAL_RESOLUTION
-        
-        elif "usuario resolvió" in str(context["solution_content"]).lower():
-            return ResolutionType.USER_SELF_RESOLVED
-        
-        elif context["process_info"]["error_count"] > 0:
+        elif context["escalation_used"]:
             return ResolutionType.ESCALATED_RESOLVED
-        
+        elif context["solution_found"]:
+            return ResolutionType.MANUAL_GUIDED
+        elif context["attempts_made"] > 1:
+            return ResolutionType.PARTIAL_RESOLUTION
         else:
-            return ResolutionType.MANUAL_GUIDED  # Default
+            return ResolutionType.USER_SELF_RESOLVED
     
     def _calculate_session_metrics(self, state: EroskiState) -> Dict[str, Any]:
-        """
-        Calcular métricas completas de la sesión.
-        
-        Args:
-            state: Estado actual
-            
-        Returns:
-            Diccionario con métricas
-        """
+        """Calcular métricas de la sesión."""
         start_time = state.get("start_time")
         end_time = datetime.now()
         
-        resolution_time_minutes = 0.0
+        resolution_time = 0
         if start_time:
-            resolution_time_minutes = (end_time - start_time).total_seconds() / 60.0
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            elif isinstance(start_time, datetime):
+                pass
+            else:
+                start_time = datetime.now()
+            
+            resolution_time = (end_time - start_time).total_seconds() / 60
         
         execution_path = state.get("execution_path", [])
+        nodes_visited = len(execution_path)
         
         return {
-            "session_id": state.get("session_id", "unknown"),
-            "resolution_time_minutes": round(resolution_time_minutes, 2),
-            "nodes_visited": len(execution_path),
-            "execution_path": execution_path,
-            "messages_exchanged": len(state.get("messages", [])),
-            "total_attempts": state.get("attempts", 0),
+            "resolution_time_minutes": round(resolution_time, 2),
+            "nodes_visited": nodes_visited,
+            "attempts_total": state.get("attempts", 0),
             "identification_attempts": state.get("identification_attempts", 0),
-            "errors_encountered": state.get("error_count", 0),
-            "automated_resolution": state.get("automated_resolution", False),
-            "satisfaction_score": state.get("satisfaction_score"),
+            "efficiency_rating": self._calculate_efficiency_rating(resolution_time, nodes_visited),
             "start_time": start_time.isoformat() if start_time else None,
             "end_time": end_time.isoformat(),
-            "efficiency_rating": self._calculate_efficiency_rating(resolution_time_minutes, len(execution_path))
+            "execution_path": execution_path
         }
     
     def _calculate_efficiency_rating(self, resolution_time: float, nodes_visited: int) -> str:
-        """
-        Calcular rating de eficiencia del proceso.
-        
-        Args:
-            resolution_time: Tiempo de resolución en minutos
-            nodes_visited: Número de nodos visitados
-            
-        Returns:
-            Rating de eficiencia
-        """
+        """Calcular rating de eficiencia."""
         if resolution_time <= 3 and nodes_visited <= 4:
             return "excellent"
         elif resolution_time <= 10 and nodes_visited <= 6:
@@ -280,17 +268,7 @@ class FinalizeNode(BaseNode):
     
     def _create_finalization_record(self, state: EroskiState, resolution_type: str, 
                                   session_metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Crear registro de finalización para tracking.
-        
-        Args:
-            state: Estado actual
-            resolution_type: Tipo de resolución
-            session_metrics: Métricas de la sesión
-            
-        Returns:
-            Registro de finalización
-        """
+        """Crear registro de finalización para tracking."""
         return {
             "finalization_id": f"FIN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{self.resolutions_count + 1}",
             "timestamp": datetime.now().isoformat(),
@@ -317,116 +295,69 @@ class FinalizeNode(BaseNode):
     
     def _generate_finalization_message(self, context: Dict[str, Any], resolution_type: str,
                                      session_metrics: Dict[str, Any], finalization_record: Dict[str, Any]) -> str:
-        """
-        Generar mensaje de finalización contextual.
+        """Generar mensaje de finalización contextual."""
         
-        Args:
-            context: Contexto de resolución
-            resolution_type: Tipo de resolución
-            session_metrics: Métricas de la sesión
-            finalization_record: Registro de finalización
-            
-        Returns:
-            Mensaje de finalización
-        """
-        user_name = context["user_info"]["name"]
-        incident_code = context["incident_info"]["code"]
-        incident_type = context["incident_info"]["type"]
+        # Datos básicos
+        user_name = context.get("employee_info", {}).get("name", "")
         resolution_time = session_metrics["resolution_time_minutes"]
-        efficiency_rating = session_metrics["efficiency_rating"]
-        finalization_id = finalization_record["finalization_id"]
         
-        # Mensaje personalizado según tipo de resolución
+        # Mensaje base según tipo de resolución
         if resolution_type == ResolutionType.AUTOMATED:
-            resolution_desc = "se ha resuelto automáticamente"
-            emoji = "🤖"
+            base_message = f"🎉 ¡Perfecto{', ' + user_name if user_name else ''}! Tu problema se resolvió automáticamente."
         elif resolution_type == ResolutionType.MANUAL_GUIDED:
-            resolution_desc = "se ha resuelto siguiendo los pasos proporcionados"
-            emoji = "🔧"
-        elif resolution_type == ResolutionType.KNOWLEDGE_PROVIDED:
-            resolution_desc = "se ha proporcionado la información solicitada"
-            emoji = "📚"
-        elif resolution_type == ResolutionType.USER_SELF_RESOLVED:
-            resolution_desc = "has logrado resolverlo por ti mismo"
-            emoji = "💪"
+            base_message = f"✅ ¡Genial{', ' + user_name if user_name else ''}! Hemos encontrado una solución para tu problema."
+        elif resolution_type == ResolutionType.ESCALATED_RESOLVED:
+            base_message = f"🤝 Perfecto{', ' + user_name if user_name else ''}! Tu problema fue resuelto con ayuda especializada."
         else:
-            resolution_desc = "se ha resuelto exitosamente"
-            emoji = "✅"
+            base_message = f"👍 ¡Excelente{', ' + user_name if user_name else ''}! Tu consulta ha sido atendida."
         
-        # Mensaje de eficiencia
-        if efficiency_rating == "excellent":
-            efficiency_msg = "¡Ha sido muy rápido y eficiente!"
-        elif efficiency_rating == "good":
-            efficiency_msg = "El proceso ha sido eficiente."
-        elif efficiency_rating == "acceptable":
-            efficiency_msg = "Hemos logrado resolverlo sin complicaciones."
-        else:
-            efficiency_msg = "Aunque ha tomado tiempo, lo hemos resuelto."
+        # Información de seguimiento
+        follow_up = """
+
+📋 **Resumen de tu sesión:**
+• Problema resuelto exitosamente
+• Tiempo de resolución: {:.1f} minutos
+• Todo está registrado en nuestro sistema
+
+🔧 **¿Necesitas algo más?**
+• Puedes contactarnos nuevamente cuando quieras
+• Tu información de empleado está guardada para futuras consultas
+
+¡Que tengas un excelente día de trabajo! 😊""".format(resolution_time)
         
-        # Construcción del mensaje completo
-        message = f"""{emoji} **¡INCIDENCIA RESUELTA EXITOSAMENTE!**
-
-Hola **{user_name}**, me complace confirmar que tu problema con **{incident_type}** {resolution_desc}.
-
-📋 **Resumen de la sesión:**
-• **Código incidencia**: `{incident_code}`
-• **Tiempo de resolución**: {resolution_time:.1f} minutos
-• **Tipo de solución**: {resolution_type.replace('_', ' ').title()}
-• **Eficiencia**: {efficiency_msg}
-
----
-
-💡 **Para futuras consultas:**
-• Menciona el código `{incident_code}` si necesitas referencias
-• Contacta al soporte técnico: **+34 946 211 000**
-• Email soporte: **soporte.tecnico@eroski.es**
-
-📊 **Tu feedback es importante:**
-Si tienes unos segundos, nos ayudaría mucho conocer tu experiencia para mejorar nuestro servicio.
-
----
-
-🙏 **¡Gracias por usar el chatbot de soporte de Eroski!**
-
-*ID de finalización: `{finalization_id}` | {datetime.now().strftime('%d/%m/%Y %H:%M')}*
-
-¿Hay algo más en lo que pueda ayudarte hoy?"""
-
-        return message
+        return base_message + follow_up
     
     def _handle_finalization_error(self, state: EroskiState, error_message: str) -> Command:
-        """
-        Manejar errores durante la finalización.
+        """Manejar errores durante la finalización."""
+        self.logger.error(f"❌ Error en finalización: {error_message}")
         
-        Args:
-            state: Estado actual
-            error_message: Mensaje de error
-            
-        Returns:
-            Command con respuesta de error
-        """
-        self.logger.error(f"💥 Error en finalización: {error_message}")
+        error_response = """❌ **Error de Sistema**
+
+Ha ocurrido un problema técnico durante la finalización de tu consulta.
+
+**No te preocupes:**
+• Tu problema ha sido registrado en nuestro sistema
+• Un supervisor revisará tu caso
+• Te contactaremos si necesitamos información adicional
+
+**Si necesitas ayuda inmediata:**
+📞 Contacta con tu supervisor de tienda
+📧 Email: soporte.tecnico@eroski.es
+
+¡Disculpa las molestias técnicas! 🙏"""
         
-        user_name = state.get("incident_user_name", "Usuario")
-        incident_code = state.get("incident_code", "No disponible")
+        # 🆕 NUEVO: Intentar guardar estado de error
+        try:
+            incident_id = self._track_incident_state(state, {
+                "finalization_error": True,
+                "error_message": error_message,
+                "estado": "error_finalizacion"
+            })
+        except:
+            incident_id = state.get("incident_id", "ERROR-UNKNOWN")
         
-        error_response = f"""⚠️ **FINALIZACIÓN CON INCIDENCIAS**
-
-Hola **{user_name}**, aunque tu problema se ha resuelto, ha ocurrido un error menor en el sistema de finalización.
-
-📋 **Tu incidencia ha sido resuelta correctamente:**
-• **Código**: `{incident_code}`
-• **Estado**: Resuelto exitosamente
-
-📞 **Si necesitas un comprobante o tienes dudas:**
-• Soporte técnico: +34 946 211 000
-• Email: soporte.tecnico@eroski.es
-
-🆔 **Código de error**: `FIN-ERROR-{datetime.now().strftime('%Y%m%d%H%M%S')}`
-
-¡Gracias por tu paciencia!"""
-
         return Command(update={
+            "incident_id": incident_id,  # 🆕 NUEVO
             "messages": [AIMessage(content=error_response)],
             "finalization_error": True,
             "error_message": error_message,
@@ -436,38 +367,10 @@ Hola **{user_name}**, aunque tu problema se ha resuelto, ha ocurrido un error me
             "current_node": "finalize",
             "last_activity": datetime.now()
         })
-    
-    def get_finalization_stats(self) -> Dict[str, Any]:
-        """
-        Obtener estadísticas de finalizaciones (para debugging/monitoreo).
-        
-        Returns:
-            Estadísticas de finalizaciones
-        """
-        if not self.resolution_history:
-            return {"total_resolutions": 0, "node_name": self.name}
-        
-        # Calcular estadísticas básicas
-        total_time = sum(r["session_metrics"]["resolution_time_minutes"] for r in self.resolution_history)
-        avg_time = total_time / len(self.resolution_history)
-        
-        resolution_types = {}
-        for record in self.resolution_history:
-            res_type = record["resolution_type"]
-            resolution_types[res_type] = resolution_types.get(res_type, 0) + 1
-        
-        return {
-            "total_resolutions": self.resolutions_count,
-            "average_resolution_time": round(avg_time, 2),
-            "resolution_types": resolution_types,
-            "resolution_history": self.resolution_history,
-            "node_name": self.name,
-            "last_resolution": self.resolution_history[-1] if self.resolution_history else None
-        }
 
 
 # =============================================================================
-# FUNCIÓN WRAPPER PARA LANGGRAPH
+# FUNCIÓN WRAPPER PARA LANGGRAPH (SIN CAMBIOS)
 # =============================================================================
 
 async def finalize_node(state: EroskiState) -> Command:
@@ -485,7 +388,7 @@ async def finalize_node(state: EroskiState) -> Command:
 
 
 # =============================================================================
-# EXPORT PARA INTEGRACIÓN
+# EXPORT PARA INTEGRACIÓN (SIN CAMBIOS)
 # =============================================================================
 
 __all__ = [
@@ -494,56 +397,3 @@ __all__ = [
     "ResolutionType",
     "SatisfactionLevel"
 ]
-
-
-# =============================================================================
-# TESTING Y DEBUGGING
-# =============================================================================
-
-if __name__ == "__main__":
-    """
-    Test básico del nodo de finalización.
-    """
-    import asyncio
-    from models.eroski_state import create_initial_eroski_state
-    
-    async def test_finalize():
-        print("🧪 Testing Finalize Node...")
-        
-        # Estado de prueba con resolución exitosa
-        test_state = create_initial_eroski_state("test-session")
-        test_state.update({
-            "resolved": True,
-            "solution_found": True,
-            "solution_type": "manual_guided",
-            "incident_type": "balanza",
-            "incident_code": "ER-2024",
-            "incident_description": "Problema con etiquetado de precios",
-            "incident_user_name": "María García",
-            "employee_email": "maria.garcia@eroski.es",
-            "incident_store_name": "Eroski Bilbao Centro",
-            "incident_department": "Pescadería",
-            "automated_resolution": False,
-            "satisfaction_score": 4,
-            "attempts": 2,
-            "identification_attempts": 1,
-            "execution_path": ["authenticate", "identificar_incidencia", "buscar_solucion", "finalize"]
-        })
-        
-        # Ejecutar nodo
-        node = FinalizeNode()
-        result = await node.execute(test_state)
-        
-        print("✅ Test completado:")
-        print(f"🎯 Finalizado: {result.update.get('finalization_processed', False)}")
-        print(f"📊 Tipo resolución: {result.update.get('resolution_type', 'N/A')}")
-        print(f"⏱️ Tiempo: {result.update.get('session_metrics', {}).get('resolution_time_minutes', 0):.1f}min")
-        print(f"🔄 Sesión cerrada: {result.update.get('session_closed', False)}")
-        
-        # Mostrar mensaje completo
-        if result.update.get('messages'):
-            print("\n💬 Mensaje de finalización:")
-            print(result.update['messages'][-1].content[:300] + "...")
-    
-    # Ejecutar test
-    asyncio.run(test_finalize())

@@ -465,7 +465,7 @@ Responde únicamente con "si" o "no".
             incident_type = state.get("incident_type")
             if not incident_type:
 
-                            # Preparar actualización base del estado
+                # Preparar actualización base del estado
                 return Command(update={
                     **base_update,
                     "messages": [AIMessage(content="Primero debemos indentificar el tipo de incidencia.")],
@@ -509,10 +509,6 @@ Responde únicamente con "si" o "no".
                 
                 # Usar agente para identificar el problema
                 
-                user_history = "\n".join([
-                    f"- {m.content}" for m in state.get("messages", [])[:] if isinstance(m, HumanMessage)
-                ])
-
                 lineas = []
                 for m in state.get("messages", []):
                     if isinstance(m, HumanMessage):
@@ -529,16 +525,23 @@ Responde únicamente con "si" o "no".
                     #Ha identificado el problema                    
                     if result['problem_identified']:
                         #Buscamos en el RAG
+                        logging.info(f"👹 problem_identified: {result['problem_identified']}")
+
                         solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problema'])
+                        logging.info(f"👹 solucion manual rag: {solution_content_manual}")
                         #Empezamos a buscar en el json. Primero lo cargamo
                         problemas_dict = self.incidents_manager.get_problemas_soluciones(incident_type)
                         agent_response_faq = self.agent_faq.invoke({
                                                             "problema_identificado": result['problema'],
                                                             "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)})
                         
-                        (f"👹 agent_response_faq: {agent_response_faq}")
+                        logging.info(f"👹 solucion manual rag: {agent_response_faq}")
+                       
                         solution_content_faq = agent_response_faq.get("solucion","No se identificó el problema")
                         
+
+                        
+                        logging.info(f"👹 solution_content_faq: {solution_content_faq}")
                         
                         if "no se identificó" in solution_content_faq.lower():
                             solution_content_faq = ""
@@ -595,7 +598,39 @@ Responde únicamente con "si" o "no".
             except:
                 pass
     
+# En tu archivo main.py o donde inicialices el chatbot:
 
+    async def initialize_rag_with_dynamic_dictionary():
+        """
+        Inicializa el RAG con diccionario técnico dinámico
+        """
+        
+        print("🚀 Inicializando RAG con Diccionario Técnico Dinámico")
+        
+        # 1. Verificar si existe diccionario técnico
+        dict_path = Path("config/technical_dictionary_generated.json")
+        
+        if not dict_path.exists():
+            print("📚 Generando diccionario técnico inicial...")
+            generator = TechnicalDictionaryGenerator()
+            await generator.generate_complete_dictionary()
+            print("✅ Diccionario técnico inicial generado")
+        
+        # 2. Inicializar RAG con diccionario dinámico
+        rag_system = OptimizedEroskiKnowledgeBaseWithDynamicDict()
+        
+        # 3. Configurar actualizaciones automáticas
+        maintenance_scheduler = DictionaryMaintenanceScheduler()
+        
+        # 4. Verificar actualizaciones al inicio
+        await maintenance_scheduler.check_and_update_if_needed()
+        
+        print("✅ RAG inicializado con diccionario técnico dinámico")
+        
+        return rag_system, maintenance_scheduler
+
+
+    
     
     def _setup_tools_manual(self) -> List[Tool]:
         """Configura las herramientas disponibles para el agente."""
@@ -793,8 +828,9 @@ Responde únicamente con "si" o "no".
                 "problem_description": problem_description.strip()
             })
 
+            logging.info(f"👹👹👹\n\n\nFusionando soluciones: {fusion}\n\n\n👹👹👹")
 
-            msg = fusion['message_to_user']+'\n\n'+ fusion['solution_content']
+            msg = fusion['message_to_user']+'\n\n'+ fusion['solution_content'] + '\n\n'+ 'Soluciona esto la incidencia?'
             
             if fusion['requires_confirmation']:
                 
@@ -870,7 +906,7 @@ Responde únicamente con "si" o "no".
             1. Verifica si el contenido del manual o del FAQ está claramente relacionado con el problema detectado.
             2. Si una solución **no está relacionada**, ignórala.
             3. Si ninguna está relacionada, genera un mensaje amable pidiendo más detalles técnicos.
-            4. Si ya se pidió más información antes y aún no se puede resolver, sugiere escalar a un supervisor (`escalate_to_supervisor = true`).
+            4. Si ya se pidió más información antes y aún no se puede resolver, sugiere escalar a un supervisor (`escalation_needed = true`).
             5. Si hay al menos una solución relacionada, construye un mensaje claro y bien redactado:
                 - Menciona de dónde viene cada parte (Manual o FAQ).
                 - Separa cada bloque con dos saltos de línea.
@@ -912,11 +948,29 @@ Responde únicamente con "si" o "no".
 
         Si el usuario **describe claramente el problema** (por ejemplo: "la balanza no imprime etiquetas"), extrae el problema identificado y su confianza.
 
-        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado.
+        Si el usuario menciona expresamente que quiere hablar con un supervisor, o si da a entender que el problema no se ha resuelto adecuadamente, o que necesita ayuda adicional, entonces devuelve `"escalation_needed": true`.
+        En todos los demás casos, devuelve `"escalation_needed": false`.
+
+        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado. El campo `solution_content` debe estar vacío.
+
+        Ejemplo de json valido:
+
 
         Devuelve un JSON en este formato (sin markdown):
 
         {format_instructions}
+
+        Ejemplo de json valido:
+        {{
+        "problem_identified": true,
+        "confidence": 0.95,
+        "problema": "La balanza no imprime etiquetas",
+        "requires_confirmation": false,
+        "message_to_user": "Gracias por la información. Ahora intentaré ayudarte con este problema.",
+        "solution_content": "",
+        "escalation_needed": false
+        }}
+
 
         CONVERSACIÓN RECIENTE:
         {chat_history}
@@ -1121,7 +1175,7 @@ Responde únicamente con "si" o "no".
         1. `problem_description`: combinar o unificar las descripciones de ambos modelos.
         2. `problem_identified`: true si alguno de los modelos lo tiene como true.
         3. `pending_confirmation`: true si alguno de los modelos lo tiene como true.
-        4. `messages`: un único mensaje con la solución fusionada, indicando origen (manual o faq). Si hay URL, añade la referencia: (manual - ver: URL) o (faq - ver: URL).
+        4. `messages`: un único mensaje con la solución fusionada, indicando origen (manual o faq). Si hay URL, añade la referencia: (manual - ver: URL) o (faq - ver: URL). Si hay solución, al final del mensaje pregunta al usuario si esto resuelve la incidencia.
         5. `solution_content`: mismo texto que en messages pero como string plano.
         6. `awaiting_user_input`: true si alguno de los modelos lo tiene como true.
         7. `confidence`: el mayor valor de los dos.

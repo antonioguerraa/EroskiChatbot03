@@ -1,82 +1,26 @@
-# =====================================================
-# .chainlit/config.toml - Configuración de Chainlit para Eroski
-# =====================================================
-
 [project]
-# Habilitar telemetría (datos anónimos de uso)
-enable_telemetry = true
+# Configuración del proyecto Chainlit para Eroski
 
-# Variables de entorno requeridas por usuarios
-user_env = []
-
-# Tiempo de sesión en segundos (1 hora)
-session_timeout = 3600
-
-# Habilitar caché de terceros
-cache = false
-
-# Orígenes autorizados
-allow_origins = ["*"]
-
-[features]
-# Mostrar playground de prompts
-prompt_playground = true
-
-# Procesar HTML (deshabilitado por seguridad)
-unsafe_allow_html = false
-
-# Procesar expresiones matemáticas
-latex = false
-
-# Auto-tag threads con user ID
-auto_tag_thread = true
-
-# Permitir subida de archivos
-multi_modal = true
-
-# Voz a texto
-speech_to_text = false
-
-# Texto a voz
-text_to_speech = false
-
-[UI]
-# Nombre de la aplicación
+# El usuario verá este nombre en la interfaz
 name = "Asistente de Incidencias Eroski"
 
-# Mostrar README por defecto
-show_readme_as_default = true
+# Configuraciones de la UI
+[UI]
+# Nombre mostrado en la interfaz
+name = "🛒 Eroski - Asistente de Incidencias"
 
-# Descripción para meta tags
-description = "Chatbot inteligente para gestión de incidencias técnicas en tiendas Eroski"
+# Mostrar readme en el panel lateral
+show_readme_as_default = false
 
-# Colapsar contenido largo por defecto
-default_collapse_content = true
+# Tema por defecto (light/dark)
+default_theme = "light"
 
-# Expandir mensajes por defecto
-default_expand_messages = false
-
-# Ocultar chain of thought
-hide_cot = false
-
-# CSS personalizado
-custom_css = "/public/eroski-theme.css"
-
-[UI.theme]
-default_mode = "light"
-
-[UI.theme.light]
-# Colores personalizados Eroski
-[UI.theme.light.primary]
-main = "#E31E24"
-dark = "#B71C21" 
-light = "#F5E6E7"
-
-[UI.theme.dark]
-[UI.theme.dark.primary]
-main = "#E31E24"
-dark = "#B71C21"
-light = "#F5E6E7"
+# Configuraciones del chat
+[features]
+# Habilitar/deshabilitar diferentes funcionalidades
+prompt_playground = false
+multi_modal = false
+speech_to_text = false
 
 [meta]
-generated_by = "1.0.505"
+generated_by = "0.8.0"

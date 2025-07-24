@@ -11,7 +11,7 @@
         "Error de calibración": "Limpiar la superficie de pesado y realizar calibración desde el menú de configuración",
         "Etiquetas salen en blanco": "Verificar que el rollo de etiquetas esté correctamente instalado y que no esté agotado"
       },
-      "info_adicional":["numero de serie", "marca", "modelo"],
+      "info_adicional":["numero_serie", "marca", "modelo"],
       "keywords": ["balanza", "peso", "gramos", "etiqueta", "precio", "fresco", "pesado", "bascula"],
       "urgency_level": 2,
       "category": "hardware",
@@ -23,13 +23,14 @@
       "name": "TPV (Terminal Punto de Venta)",
       "description": "Problemas con las cajas registradoras y terminales de pago",
       "problemas": {
-        "El TPV no enciende": "Verificar que el cable de alimentación esté conectado y presionar el botón de encendido durante 3 segundos",
+        "El TPV no enciende": "Verificar que el cable de alimentación esté conectado y preºsionar el botón de encendido durante 3 segundos",
         "No lee las tarjetas": "Limpiar el lector de tarjetas con una tarjeta de limpieza o paño suave",
         "Error al imprimir tickets": "Comprobar que hay papel en la impresora y que está correctamente instalado",
         "Pantalla en negro": "Reiniciar el TPV manteniendo presionado el botón de encendido durante 10 segundos",
         "El cajón no se abre": "Usar la llave manual del cajón o reiniciar el TPV",
         "Sistema muy lento": "Cerrar aplicaciones innecesarias y reiniciar el terminal si es necesario"
       },
+      "info_adicional":["color"],
       "keywords": ["tpv", "caja", "terminal", "pago", "tarjeta", "efectivo", "ticket", "registradora", "cobrar"],
       "urgency_level": 4,
       "category": "hardware",

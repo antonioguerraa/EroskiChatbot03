@@ -694,7 +694,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
                 return self._provide_solution_and_complete(state, decision)
             
             elif decision.escalation_needed:
-                return self._escalate_to_supervisor(state)
+                return self._escalation_needed(state)
             
             else:
                 # Continuar conversación con información del análisis histórico
@@ -792,7 +792,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO incluyendo TODOS los campos:
             
             # 4. Verificar escalación
             if self._should_escalate(state, attempt_number):
-                return self._escalate_to_supervisor(state)
+                return self._escalation_needed(state)
             
             # 5. Verificar cancelación
             if self._wants_to_cancel(state):
@@ -939,7 +939,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
         
         # Procesar según la acción
         if decision.next_action == "escalate" or decision.escalation_needed:
-            return self._escalate_to_supervisor(state)
+            return self._escalation_needed(state)
         
         elif decision.next_action == "provide_solution" and decision.solution_ready:
             return self._provide_solution_and_complete(state, decision)
@@ -982,7 +982,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
         
         if not final_solution:
             # Si no hay solución específica, escalamos
-            return self._escalate_to_supervisor(state)
+            return self._escalation_needed(state)
         
         # Crear mensaje completo con solución
         solution_message = f"""✅ **Incidencia Identificada: {incident_type}**
@@ -1009,7 +1009,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
             }
         )
     
-    def _escalate_to_supervisor(self, state: EroskiState) -> Command:
+    def _escalation_needed(self, state: EroskiState) -> Command:
         """Escalar a supervisor"""
         
         escalation_message = """🔝 **Escalando a Supervisor**

@@ -170,40 +170,41 @@ class IncidentManager:
             "codigo_incidencia": incident_id,
             "timestamp_creacion": now.isoformat(),
             "estado": IncidentStatus.EN_PROGRESO,
-            "nodo_origen": "buscar_solucion",
+            #"nodo_origen": "buscar_solucion",
             
             # Datos del empleado (desde identificador_manual)
             "nombre_empleado": self._extract_employee_name(state),
-            "email_empleado": self._extract_employee_email(state),
+            #"email_empleado": self._extract_employee_email(state),
             "nombre_tienda": self._extract_store_name(state),
             "seccion": self._extract_department(state),
-            "numero_empleado": state.get("employee_id", ""),
+            #"numero_empleado": state.get("employee_id", ""),
             "empleado_autenticado": state.get("authenticated", False),
             
             # Datos de incidencia (desde identificacion_incidencia)
             "tipo_incidencia": state.get("incident_type"),
+            "informacion_adicional":state.get("incident_info_adicional"),
             "descripcion_problema": state.get("incident_description"),
             "problema_especifico": state.get("problem_description"),
-            "confianza_identificacion": state.get("identification_confidence"),
-            "fuente_identificacion": state.get("identification_source"),
-            "detalles_adicionales": state.get("incident_details", {}),
+            #"confianza_identificacion": state.get("identification_confidence"),
+            #"fuente_identificacion": state.get("identification_source"),
+            #"detalles_adicionales": state.get("incident_details", {}),
             
             # Estado inicial de solución
             "solucion_encontrada": False,
-            "tipo_solucion": None,
+            #"tipo_solucion": None,
             "contenido_solucion": None,
             "escalacion_necesaria": False,
-            "razon_escalacion": None,
+            #"razon_escalacion": None,
             
             # Tracking
             "conversacion": self._extract_messages(state),
             "session_id": state.get("session_id"),
-            "ultimo_nodo": "buscar_solucion",
+            #"ultimo_nodo": "buscar_solucion",
             "timestamp_actualizacion": now.isoformat(),
             
             # Metadatos
             "version_sistema": "1.0",
-            "flujo_seguido": ["identificador_manual", "identificacion_incidencia", "buscar_solucion"]
+            #"flujo_seguido": ["identificador_manual", "identificacion_incidencia", "buscar_solucion"]
         }
     
     def _has_required_data(self, state: EroskiState) -> bool:
@@ -223,6 +224,9 @@ class IncidentManager:
     def _update_solution_progress(self, incident_id: str, state: EroskiState):
         """Actualizar progreso de búsqueda/aplicación de solución"""
         updates = {
+            "informacion_adicional":state.get("incident_info_adicional"),
+            "descripcion_problema": state.get("incident_description"),
+            "problema_especifico": state.get("problem_description"),
             "solucion_encontrada": state.get("solution_found", False),
             "tipo_solucion": state.get("solution_type"),
             "contenido_solucion": state.get("solution_content"),

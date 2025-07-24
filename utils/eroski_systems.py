@@ -459,7 +459,7 @@ async def create_eroski_ticket(incident_data: Dict[str, Any], employee_data: Dic
     sap = get_sap_integration()
     return await sap.create_ticket(incident_data, employee_data)
 
-async def escalate_to_supervisor(
+async def escalation_needed(
     incident_type: str,
     store_id: str,
     incident_summary: Dict[str, Any],

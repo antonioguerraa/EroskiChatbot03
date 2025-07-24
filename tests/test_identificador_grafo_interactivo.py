@@ -57,12 +57,13 @@ class InteractiveGrafoTester:
                         "busqueda_manual",
                         "busqueda_faq",
                         "incident_id",
-                        "incident_department",
-                        "authenticated",
+                        #"incident_department",
+                        #"authenticated",
                         #"email_authen_tried",
                         #"employee_id_authent_tried",
-                        "solution_found", 
+                        "incident_found", 
                         "incident_type",
+                        "incident_info_adicional",
                         "incident_type_confirmed",
                         "escalation_needed:", 
                         "awaiting_user_input", 
@@ -74,28 +75,23 @@ class InteractiveGrafoTester:
                         "identification_source",
                         "pending_confirmation"
                       ]
-            #for campo in campos:
-            #    print(f"🎛️ {campo}: {state.get(campo)}")
+            for campo in campos:
+                print(f"🎛️ {campo}: {state.get(campo)}")
 
             #if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
             #    logging.info("👹 Entra en identificador base de datos")
             #    return "identificador_base_de_datos"
             if state.get("escalation_needed"):
-                print("👹check a")
                 return "supervisor_node"
             if not state.get("authenticated"):
-                print("👹check b")
                 logging.info("👹 Entra en recoger_datos")
                 return "identificador_manual"
-            if not state.get("incident_type_confirmed"):
-                print("👹check c")
+            if not state.get("incident_found"):
                 logging.info("👹 Entra en identificar tipo incidencia")
                 return "identificar_incidencia"
             if not state.get("incident_info_adicional_completa", False):
-                print("👹check d")
                 return "info_adicional_incidencia"
             if state.get("solution_found"):
-                print("👹check e")
                 return "resolucion_exitosa"
             logging.info("👹 Entra en buscar solución")
             return "buscar_solucion"
@@ -227,13 +223,13 @@ class InteractiveGrafoTester:
         for m in new_messages:
             if isinstance(m, AIMessage):
                 print("🧩" * 10)
-                print(f"🧩🤖 AGENTE: {m.content}")
+                print(f"🤖 AGENTE: {m.content}")
                 print("🧩" * 10)
 
         
         campos = [  
-                    #"incident_user_name", 
-                    #"incident_last_name", 
+                    "incident_user_name", 
+                    "incident_last_name", 
                     #"employee_email", 
                     #"authenticated",
                     'incident_id'

@@ -1,0 +1,9 @@
+{
+  "rag_settings": {
+    "similarity_threshold": 0.55,   Más permisivo = más resultados
+    "vector_weight": 0.6,          // Peso búsqueda vectorial
+    "text_weight": 0.4,            // Peso búsqueda texto
+    "cache_ttl_minutes": 60,       // Tiempo vida cache
+    "enable_analytics": true       // Métricas automáticas
+  }
+}

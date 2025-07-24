@@ -41,7 +41,6 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from pydantic import BaseModel, Field
 from pydantic import PrivateAttr
 from langchain_core.output_parsers import JsonOutputParser
-from utils.construir_historico_mensajes import format_full_chat_history
 
 # LangGraph imports
 from langgraph.types import Command
@@ -54,7 +53,7 @@ from utils.llm.providers import get_llm, get_vectorizer
 from config.settings import get_settings
 
 from models.incident_response import IncidentResponse
-from models.identificar_incidencia import IdentificarIncidencia
+from models.identificar_incidencia import HistoricalAnalysis
 
 parser = PydanticOutputParser(pydantic_object=IncidentResponse)
 
@@ -761,17 +760,87 @@ class IdentificacionNode(BaseNode):
                     "awaiting_user_input": False
                 })
             
-            respuesta = await self._identificar_incidencia(all_user_messages, state)
-            mensaje_ai = respuesta.pop("respuesta_al_usuario", None)
-            update_dict = respuesta.copy()
-            update_dict["messages"] = [AIMessage(content=mensaje_ai)] if mensaje_ai else "puede repetir el mensaje anterior, por favor?"
-            logging.info(f"👹👹👹\n\n\nrespuesta: {respuesta}\n\n\n👹👹👹")
-            
-            for key, value in respuesta.items():
-                print(f"key: {key}, value: {value}")
-            
-            return Command(update=update_dict)
 
+
+
+            
+
+            # 3. Procesar confirmación pendiente
+            if state.get("pending_confirmation", False):
+                return await self._handle_confirmation(state, last_message)
+
+            # 4. Analizar historial del usuario (al inicio del nodo)
+            if not state.get("identification_started") and all_user_messages:
+                print("👹check 1")
+                self.logger.info(f"📚 Analizando historial del usuario ({len(all_user_messages)} mensajes)")
+                historical_analysis = await self._analyze_historical_messages(all_user_messages, state)
+
+                update = {
+                    "messages": [AIMessage(content=historical_analysis["respuesta_al_usuario"])],
+                    "identification_started": True,
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True,
+                    "identification_attempts": attempts + 1,
+                    "escalation_needed": historical_analysis['escalation_needed']
+                }
+
+                if historical_analysis.get("incident_found") and historical_analysis.get("confidence", 0) >= 0.75:
+                    update.update({
+                        "pending_confirmation": True,
+                        "pending_incident_type": historical_analysis["incident_type"],
+                        "identification_confidence": historical_analysis["confidence"],
+                        "identification_keywords": historical_analysis.get("keywords_detected", []),
+                        "identification_source": "historical_analysis"
+                    })
+
+                return Command(update=update)
+
+
+
+            # 6. Ejecutar el agente React con salida estructurada
+            print("👹check 4")
+            self.logger.info("🤖 Ejecutando agente de identificación")
+            chat_history = self._format_chat_history(messages)
+            agent_input = {
+                "input": last_message,
+                "chat_history": chat_history
+            }
+
+            result = await self.chain.ainvoke(agent_input)
+            print("👹check 5")
+            if result is None:
+                return Command(update={
+                    "messages": [AIMessage(content="No he podido procesar tu mensaje. ¿Puedes describir el problema nuevamente?")],
+                    "awaiting_user_input": True,
+                    "identification_attempts": attempts + 1
+                })
+
+            # 7. Si el agente devuelve tipo confirmado, finalizar
+            if result.incident_type_confirmed:
+                print("👹check 6")
+                return Command(update={
+                    "messages": [AIMessage(content=result.response_to_user)],
+                    "incident_type": result.incident_type,
+                    "incident_type_confirmed": True,
+                    "awaiting_user_input": True,  # o False si pasas a siguiente nodo
+                    "current_node": "identificar_incidencia",
+                    "identification_attempts": attempts + 1,
+                    "escalation_needed":result.escalation_needed
+                })
+
+            print("👹check 7")
+            # 8. Si no está confirmado, esperar confirmación del usuario
+            return Command(update={
+                "messages": [AIMessage(content=result.response_to_user)],
+                "pending_incident_type": result.incident_type,
+                "pending_confirmation": True,
+                "identification_confidence": result.confidence,
+                "identification_keywords": result.keywords,
+                "identification_source": "agente_react",
+                "awaiting_user_input": True,
+                "identification_attempts": attempts + 1,
+                "escalation_needed":result.escalation_needed
+            })
 
         except Exception as e:
             self.logger.error(f"❌ Error en execute: {e}")
@@ -945,85 +1014,123 @@ class IdentificacionNode(BaseNode):
                 "awaiting_user_input": True
             })
 
+    def format_full_chat_history(self, messages: List[BaseMessage], max_messages: int = 10) -> str:
+        lines = []
+        for msg in messages[-max_messages:]:
+            if isinstance(msg, HumanMessage):
+                lines.append(f"👤 Usuario: {msg.content}")
+            elif isinstance(msg, AIMessage):
+                lines.append(f"🤖 Asistente: {msg.content}")
+        return "\n".join(lines)
 
-
-    async def _identificar_incidencia(self, user_messages: List[str], state: EroskiState) -> Dict[str, Any]:
+    async def _analyze_historical_messages(self, user_messages: List[str], state: EroskiState) -> Dict[str, Any]:
         """Analizar todo el historial de mensajes del usuario buscando pistas de incidencias"""
-        print("👹👹Entra en _identificar_incidencia")
+        print("👹👹Entra en _analyze_historical_messages")
         try:
             # Combinar todos los mensajes del usuario en un texto único
-            parser = JsonOutputParser(pydantic_object=IdentificarIncidencia)
-            format_instructions = parser.get_format_instructions()
             combined_text = " | ".join(user_messages)
             self.logger.info(f"🔍 Analizando historial combinado: {combined_text[:200]}...")
-            historico_mensaje_usuario = format_full_chat_history(state.get("messages", []), 100)
-            print(f"👹👹👹ha pasado historico_mensaje_usuario: 👹👹👹")
+            
+            # Usar LangChain Retriever para buscar en todo el historial
+            relevant_documents = self.semantic_retriever.get_relevant_documents(combined_text)
+            user_messages_text = self.format_full_chat_history(state.get("messages", []), 10)
+
+            # Preparar datos para el prompt
             incident_user_name = state.get("incident_user_name", "Empleado")
+            incident_store_name = state.get("incident_store_name", "Tienda")
+            section = state.get("section", "Sección")
+            
+            docs_text = self.identify_tool._format_retriever_documents(relevant_documents)
+            user_messages_text = "\n".join([f"{i+1}. {msg}" for i, msg in enumerate(user_messages)])
+            
+            parser = JsonOutputParser(pydantic_object=HistoricalAnalysis)
             
             incident_types_list = ", ".join(self.incidents_data.keys())  # Genera la lista de tipos válidos desde el JSON
 
-            system_prompt = """
-                Eres un asistente de Eroski. Tu tarea es identificar el tipo de incidencia que quiere reportar el usuario que se llama {incident_user_name}
-
-                Debes analizar el historial de mensajes del usuario y verificar si el usuario ya mencionó una incidencia.
-                Las incidencias deben estar dentro de la lista de tipos válidos
-
-                === LISTA DE TIPOS VÁLIDOS DE INCIDENCIA === 
-                {incident_types_list} 
-
-                Si no localizas la incidencia dentro de la lista, pregunta al usuario por más detalles que te ayuden a identificarla una de la lista.
-
-                === HISTORICO DE MENSAJES ===
-                - Este es el historico de la conversación. Utilizalo para seguir el hilo y la coherencia de la conversación: 
-                {historico_mensaje_usuario}
-
-                === REGLAS DE ANÁLISIS ===
-                1. Busca menciones de equipos como: balanza, TPV, caja, impresora, ordenador, red, wifi, etc.
-                2. Busca síntomas como: "no funciona", "error", "problema", "fallo", "no enciende", "no imprime".
-                3. Compara cualquier equipo detectado con los tipos válidos del sistema.
-                4. Si el equipo mencionado NO aparece en la lista de tipos válidos, pregunta al usuario por más información para ayudar a identificar la incidencia.
-                5. En ese caso, informa al usuario que no puedes identificar el equipo y sugiere revisar si se trata de otro más común.
-                6. Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`, si no, marca `"escalation_needed": false`
-
-                RESPUESTA AL USUARIO:
-                - Si detectas una incidencia conocida, genera un mensaje claro y amable para pedir confirmación. Ejemplo: "¿Confirmas que el problema es con una balanza?"
-                - Si NO identificas ninguna incidencia válida, sugiere con amabilidad al usuario que revise el equipo y proporciona ejemplos comunes.
-                - Si el usuario quiere hablar con un supervisor genera un mensaje amable indicando que le pasas a un supervisor
-
-                - Analiza el histórico de mensajes, y responde al usuario siguiendo el hilo de la conversación.
-
-                === FORMATO DE RESPUESTA ===
-
-                Devuelve un JSON con los siguientes campos:
-
-                {format_instructions}
-
-                Responde en JSON, sin markdowns, no incluyas texto adicional.
-                """
-
 
             historical_prompt = ChatPromptTemplate.from_messages([
-                ("system", system_prompt),
-                ("human", "{input}")
-            ]).partial(format_instructions=format_instructions)
+                ("system", """
+            Eres un especialista en análisis de historiales de conversación para identificar incidencias técnicas.
 
-            mensaje_usuario = user_messages[-1] if isinstance(user_messages[-1], str) else user_messages[-1].content
+            Tu misión es analizar TODO EL HISTORIAL de mensajes del usuario para detectar si ya mencionó una incidencia.
+
+            CONTEXTO DEL EMPLEADO:
+            - Nombre: {incident_user_name}
+            - Tienda: {incident_store_name}
+            - Sección: {section}
+
+            DOCUMENTOS RELEVANTES DEL RETRIEVER:
+            {relevant_documents}
+
+            LISTA DE TIPOS VÁLIDOS DE INCIDENCIA:
+            {incident_types_list}
+
+            TIPOS DE INCIDENCIAS COMUNES DISPONIBLES:
+            {incident_examples}
+
+            REGLAS DE ANÁLISIS:
+            1. Busca menciones de equipos como: balanza, TPV, caja, impresora, ordenador, red, wifi, etc.
+            2. Busca síntomas como: "no funciona", "error", "problema", "fallo", "no enciende", "no imprime".
+            3. Compara cualquier equipo detectado con los tipos válidos del sistema.
+            4. Si el equipo mencionado NO aparece en la lista de tipos válidos, marca "incident_found": false.
+            5. En ese caso, informa al usuario que no puedes identificar el equipo y sugiere revisar si se trata de otro más común.
+            6. Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`, si no, marca `"escalation_needed": false`
+
+            RESPUESTA AL USUARIO:
+            - Si detectas una incidencia conocida, genera un mensaje claro y amable para pedir confirmación. Ejemplo: "¿Confirmas que el problema es con una balanza?"
+            - Si NO identificas ninguna incidencia válida, sugiere con amabilidad al usuario que revise el equipo y proporciona ejemplos comunes.
+            - Si el usuairo quiere hablar con un supervisor genera un mensaje amable indicando que le pasas a un supervisor
+            
+
+            FORMATO DE RESPUESTA (devuelve solo este JSON sin markdown):
+            {{
+            "incident_found": boolean,
+            "incident_type": "tipo_identificado_o_null",
+            "confidence": float,
+            "evidence": "texto que llevó a la conclusión",
+            "keywords_detected": ["lista", "de", "keywords"],
+            "reasoning": "explicación del análisis",
+            "needs_more_info": boolean,
+            "respuesta_al_usuario": "mensaje que mostrar al usuario",
+            "escalation_needed":boolean,
+            }}
+            """),
+                ("human", "HISTORIAL COMPLETO DE MENSAJES DEL USUARIO:\n{user_messages_text}")
+            ])
+
+
+
+            # Conversión del historial completo
+            all_messages: List[BaseMessage] = state.get("messages", [])
+            user_messages_text = "\n".join([
+                f"👤 {m.content}" if m.type == "human" else f"🤖 {m.content}"
+                for m in all_messages
+            ])
+
+            # Datos de entrada para el prompt
+            prompt_inputs = {
+                "incident_user_name": incident_user_name,
+                "incident_store_name": incident_store_name,
+                "section": section,
+                "relevant_documents": self.identify_tool._format_retriever_documents(
+                    self.semantic_retriever.get_relevant_documents(user_messages_text)
+                ),
+                "incident_examples": "\n".join([
+                    f"- {k}: {v.get('description', '')}"
+                    for k, v in self.incidents_data.items()
+                ]),
+                "incident_types_list": ", ".join(self.incidents_data.keys()),
+                "user_messages_text": user_messages_text
+            }
 
             # Construcción del chain y ejecución
             llm_chain = historical_prompt | self.llm | parser
-            inputs = {
-                "incident_user_name":incident_user_name,
-                "incident_types_list":incident_types_list,
-                "historico_mensaje_usuario":historico_mensaje_usuario,
-                "input": mensaje_usuario
-            }
-
-            result = await llm_chain.ainvoke(inputs)
+            result = await llm_chain.ainvoke(prompt_inputs)
             
             return result
                 
         except Exception as e:
-            self.logger.error(f"❌ Error en identificar incidencia: {e}")
+            self.logger.error(f"❌ Error en análisis histórico: {e}")
             return {"incident_found": False, "confidence": 0.0, "reasoning": f"Error: {str(e)}"}
     
     def _fallback_historical_analysis(self, user_messages: List[str], relevant_documents: List[Document]) -> Dict[str, Any]:

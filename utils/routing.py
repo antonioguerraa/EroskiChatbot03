@@ -22,7 +22,7 @@ class ClassificationRouter:
             return self.node._handle_cancellation(state)
 
         if decision.escalation_needed or decision.next_action == "escalate":
-            return self.node._escalate_to_supervisor(state)
+            return self.node._escalation_needed(state)
 
         if decision.solution_ready and decision.next_action in ["provide_solution", "complete"]:
             return self.node._provide_solution_and_complete(state, decision)

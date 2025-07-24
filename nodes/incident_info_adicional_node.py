@@ -17,6 +17,7 @@ from nodes.base_node import BaseNode
 from utils.llm.providers import get_llm
 from utils.cargar_incidentes import EroskiIncidentsManager
 from utils.incident_manager import get_incident_manager
+from utils.construir_historico_mensajes import format_full_chat_history
 import logging
 logger = logging.getLogger(__name__)
 # ----------------------
@@ -55,11 +56,11 @@ Este es el historial de la conversación:
 INSTRUCCIONES:
 - Si el usuario ya ha proporcionado algún dato, no lo repitas.
 - Si falta información, pídela de una en una.
-- Si el usuario no sabe algo, acepta su respuesta y avanza.
+- Si el usuario no sabe algo, acepta su respuesta, guardala en el campo correspondiente, y avanza.
 - Si el usuario responde algo irrelevante o no relacionado con la información solicitada, redirígelo con amabilidad a proporcionar el dato pendiente.
 - Si el usuario menciona que quiere hablar con un supervisor, marca `escalation_needed: true`.
 - Si el usuario corrige algo ya recogido, actualiza el valor.
-- Incluso si el usuario no sabe o no tiene la información solicitada, **debes incluir igualmente ese campo en `info_recogida`** con el valor `"desconocido"`, `"no lo sé"` o similar.
+- Rellena el campo que estas solicitando con lo que te indique el usuario
 - Devuelve un mensaje natural, breve y amable.
 
 
@@ -87,15 +88,17 @@ DEVUELVE SOLO ESTE JSON (sin markdown):
         if not incident_id:
             incident_id = get_incident_manager().manage_incident(state)
 
-        logger.info(f"👹 incident_id: {incident_id}")
         info_adicional = self.incidents_manager.get_info_adicional(incident_type)
-        logger.info(f"👹info_adicional: {info_adicional}")
-              
-              
         ya_recogido = state.get("incident_info_adicional", {})
         attempts = state.get("additional_info_attempts", 0)
-        logger.info(f"👹check 1: info adicional {info_adicional}")
         pendientes = [campo for campo in info_adicional if campo not in ya_recogido]
+
+        logger.info(f"👹 incident_id: {incident_id}")
+        logger.info(f"👹info_adicional: {info_adicional}")
+        logger.info(f"👹 ya_recogido en el state: {ya_recogido}")
+        logger.info(f"👹check 1: info adicional {info_adicional}")
+        logger.info(f"👹check 2: pendientes {pendientes}")
+
         if not pendientes:
             return Command(update={
                 "incident_id":incident_id,
@@ -113,20 +116,26 @@ DEVUELVE SOLO ESTE JSON (sin markdown):
                 "awaiting_user_input": False
             })
 
-        chat_history = self._formatear_historial(state.get("messages", []))
+        chat_history = format_full_chat_history(state.get("messages", []))
 
         response: InfoAdicionalResponse = await self.chain.ainvoke({
             "incident_type": incident_type,
-            "info_adicional": ", ".join(info_adicional),
+            "info_adicional": ", ".join(pendientes),
             "chat_history": chat_history
         })
 
+
+        logger.info(f"👹response: {response}")
+
         update = {
             "incident_id":incident_id,
-            "messages": add_messages([], [AIMessage(content=response["message_to_user"])]),
+            "messages": [AIMessage(content=response["message_to_user"])],
+            #"incident_info_adicional": {**ya_recogido, **response["info_recogida"]},
             "incident_info_adicional": {**ya_recogido, **response["info_recogida"]},
             "additional_info_attempts": attempts + 1
         }
+        logging.info(f"👹update1: {update}")
+    # ...
 
         if response["escalation_needed"]:
             update.update({
@@ -140,7 +149,7 @@ DEVUELVE SOLO ESTE JSON (sin markdown):
                 "incident_id":incident_id,
                 "current_node": "info_adicional_incidencia",
                 "awaiting_user_input": True,
-                "incident_info_adicional_completa": False
+                "incident_info_adicional_completa": False,
             })
         else:
             update.update({
@@ -150,18 +159,9 @@ DEVUELVE SOLO ESTE JSON (sin markdown):
                 "incident_info_adicional_completa": True
             })
 
+        logging.info(f"👹update2: {update}")
         return Command(update=update)
 
-
-
-    def _formatear_historial(self, mensajes: List) -> str:
-        lineas = []
-        for m in mensajes[-10:]:
-            if isinstance(m, HumanMessage):
-                lineas.append(f"👤 {m.content}")
-            elif isinstance(m, AIMessage):
-                lineas.append(f"🤖 {m.content}")
-        return "\n".join(lineas) if lineas else "Sin historial."
 
 
 # Factory para LangGraph
