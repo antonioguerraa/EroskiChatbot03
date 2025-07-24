@@ -12,275 +12,47 @@ CAMBIOS PRINCIPALES:
 - Manejo de errores mejorado
 """
 
-import asyncio
 import json
 import logging
-import os
-import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List
 from datetime import datetime
-from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
-from langchain_core.tools import tool, Tool
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
-from langchain.schema.runnable import RunnableSequence
+from langchain.schema.runnable import RunnableSequence, Runnable
 from langchain_core.runnables import RunnableLambda
 from langgraph.types import Command
 
 # Imports del proyecto
 from models.eroski_state import EroskiState
-from utils.llm.providers import get_llm, get_vectorizer
+from models.faq_problem_match import FAQ_ProblemMatch
+from utils.llm.providers import get_llm
 from utils.construir_historico_mensajes import format_full_chat_history
-from config.settings import get_settings
 from nodes.tools.confirmation_tool import ConfirmationTool
 
+
 # PostgreSQL imports
-import psycopg2
-import numpy as np
-from psycopg2.extras import RealDictCursor
 from utils.incident_manager import get_incident_manager
 from models.indentificacion_solucion import IdentificacionSolucion
-from models.unified_solution_response import UnifiedSolutionResponse
-
-
+from models.ordenar_chunks import OrdenarChunks
 logger = logging.getLogger(__name__)
+try:
+    from nodes.improved_eroski_knowledge_base import OptimizedEroskiKnowledgeBaseWithMetadata
+    ENHANCED_RAG_AVAILABLE = True
+    logger.info("✅ RAG con metadatos importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar RAG mejorado: {e}")
+    from nodes.optimized_eroski_knowledge_base import OptimizedEroskiKnowledgeBase
+    ENHANCED_RAG_AVAILABLE = False
+
 
 # =====================================================
 # CLASE RAG OPTIMIZADA - REEMPLAZA LA ANTERIOR
 # =====================================================
 
-class OptimizedEroskiKnowledgeBase:
-    """
-    Versión optimizada del RAG que reemplaza la clase EroskiKnowledgeBase original.
-    
-    MEJORAS IMPLEMENTADAS:
-    - Threshold optimizado (0.4 vs 0.7 anterior)
-    - Mejor formateo de resultados
-    - Integración con diccionario técnico
-    - Manejo de errores robusto
-    - Logging detallado
-    """
-    
-    def __init__(self):
-        self.settings = get_settings()
-        self.vectorizer = get_vectorizer()
-        self._connection = None
-        
-        # CONFIGURACIÓN OPTIMIZADA
-        self.similarity_threshold = 0.4  # MEJORADO: Era 0.7, ahora 0.4
-        self.max_results = 3
-        
-        logger.info("✅ RAG optimizado inicializado con threshold 0.4")
-    
-    def _get_connection(self):
-        """Obtiene una conexión a la base de datos PostgreSQL."""
-        if self._connection is None or self._connection.closed:
-            try:
-                # Preparar parámetros de conexión
-                conn_params = {
-                    "host": self.settings.database.host,
-                    "database": self.settings.database.name,
-                    "user": self.settings.database.user,
-                    "port": self.settings.database.port
-                }
-                
-                # Solo agregar password si no está vacío
-                if self.settings.database.password:
-                    conn_params["password"] = self.settings.database.password
-                
-                self._connection = psycopg2.connect(**conn_params)
-                logger.debug("✅ Conexión PostgreSQL establecida")
-
-            except Exception as e:
-                logger.error(f"Error conectando a PostgreSQL: {e}")
-                raise
-        return self._connection
-    
-    def buscar_solucion_rag(self, query: str, top_k: int = 3) -> str:
-        """
-        MÉTODO PRINCIPAL - Realiza búsqueda semántica optimizada en la base de conocimiento.
-        
-        MEJORAS IMPLEMENTADAS:
-        - Threshold optimizado de 0.4 (vs 0.7 anterior)
-        - Mejor formateo de resultados
-        - Logging detallado
-        - Manejo de errores robusto
-        
-        Args:
-            query: Consulta del usuario
-            top_k: Número de resultados a devolver
-            
-        Returns:
-            str: Texto formateado con las mejores soluciones encontradas
-        """
-        logger.info(f"🔍 Búsqueda RAG optimizada: '{query}'")
-        
-        try:
-            # 1. Vectorizar la consulta
-            query_embedding = self.vectorizer.embed(query)
-            if not query_embedding:
-                logger.error("❌ No se pudo vectorizar la consulta")
-                return self._format_no_results(query, "Error de vectorización")
-            
-            # 2. Convertir a formato compatible con PostgreSQL
-            query_vector = np.array(query_embedding)
-            
-            # 3. Ejecutar búsqueda vectorial optimizada
-            conn = self._get_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                
-                # SQL OPTIMIZADO con threshold mejorado
-                sql = """
-                SELECT 
-                    chunk_text,
-                    documento_origen,
-                    pagina_numero,
-                    palabras_clave,
-                    seccion,
-                    chunk_metadata,
-                    1 - (chunk_embedding <=> %s::vector) as similarity
-                FROM knowledge_base
-                WHERE chunk_embedding IS NOT NULL
-                AND 1 - (chunk_embedding <=> %s::vector) > %s
-                ORDER BY chunk_embedding <=> %s::vector
-                LIMIT %s;
-                """
-                
-                # Ejecutar consulta con threshold optimizado
-                cursor.execute(sql, (
-                    query_vector.tolist(), 
-                    query_vector.tolist(),
-                    self.similarity_threshold,  # 0.4 vs 0.7 anterior
-                    query_vector.tolist(), 
-                    top_k
-                ))
-                results = cursor.fetchall()
-                
-                # 4. Procesar y formatear resultados
-                if not results:
-                    logger.warning(f"⚠️ Sin resultados para '{query}' con threshold {self.similarity_threshold}")
-                    return self._format_no_results(query, "Threshold muy restrictivo")
-                
-                logger.info(f"✅ {len(results)} resultados encontrados (similitud: {results[0]['similarity']:.3f}-{results[-1]['similarity']:.3f})")
-                
-                return self._format_results_optimized(results, query)
-                
-        except Exception as e:
-            logger.error(f"❌ Error en búsqueda RAG optimizada: {e}")
-            return self._format_error_result(query, str(e))
-    
-    def _format_results_optimized(self, results: List[Dict], query: str) -> str:
-        """
-        NUEVO - Formatea resultados con mejor presentación y información útil.
-        """
-        if not results:
-            return self._format_no_results(query, "Sin resultados")
-        
-        formatted_parts = []
-        
-        # Header con resumen
-        best_similarity = results[0]['similarity']
-        if best_similarity > 0.8:
-            quality_indicator = "🎯 **Excelente coincidencia**"
-        elif best_similarity > 0.6:
-            quality_indicator = "✅ **Buena coincidencia**"
-        else:
-            quality_indicator = "📋 **Coincidencia parcial**"
-        
-        formatted_parts.append(f"{quality_indicator} - {len(results)} soluciones encontradas para: **{query}**\n")
-        
-        # Formatear cada resultado
-        for i, result in enumerate(results, 1):
-            similarity = result['similarity']
-            chunk_text = result['chunk_text'].strip()
-            
-            # Limpiar y truncar texto si es muy largo
-            if len(chunk_text) > 500:
-                chunk_text = chunk_text[:500] + "..."
-            
-            # Información del documento
-            doc_info = f"📄 {result['documento_origen']}"
-            if result['pagina_numero']:
-                doc_info += f", Página {result['pagina_numero']}"
-            if result['seccion']:
-                doc_info += f" - {result['seccion']}"
-            
-            # Formatear solución
-            solution_block = f"""
-**Solución {i}** (Similitud: {similarity:.2f})
-{doc_info}
-
-{chunk_text}
-
-"""
-            
-            # Agregar palabras clave si están disponibles
-            if result['palabras_clave'] and len(result['palabras_clave']) > 0:
-                keywords = result['palabras_clave'][:5]  # Máximo 5 keywords
-                solution_block += f"🏷️ **Palabras clave:** {', '.join(keywords)}\n"
-            
-            solution_block += "---\n"
-            formatted_parts.append(solution_block)
-        
-        # Footer con consejos
-        footer = f"""
-💡 **¿Te ayudó esta información?**
-• Si necesitas más detalles, puedes preguntar sobre aspectos específicos
-• Para problemas complejos, puedes consultar las páginas mencionadas del manual
-• Si el problema persiste, considera escalarlo a soporte técnico
-
-🔧 **Basado en:** Manual técnico DIBAL Mistral con {len(results)} soluciones relevantes
-"""
-        formatted_parts.append(footer)
-        
-        return "\n".join(formatted_parts)
-    
-    def _format_no_results(self, query: str, reason: str = "") -> str:
-        """NUEVO - Mensaje mejorado cuando no hay resultados."""
-        return f"""
-🔍 **No se encontraron resultados específicos para:** "{query}"
-
-**💡 Sugerencias para mejorar la búsqueda:**
-• Usa términos más específicos del equipo (ej: "DIBAL Mistral calibración")
-• Incluye el modelo exacto del equipo si lo conoces
-• Prueba sinónimos técnicos (ej: "menú configuración" o "pantalla display")
-• Describe el problema de forma más detallada
-
-**🔧 Términos que funcionan bien:**
-• Para balanzas: peso, tara, calibrar, etiqueta, imprimir
-• Para configuración: menú, configuración, pantalla, teclado
-• Para problemas: error, no funciona, problema, fallo
-
-**📞 Si es urgente:** Considera escalarlo a soporte técnico especializado.
-
-{f"📋 **Información técnica:** {reason}" if reason else ""}
-"""
-    
-    def _format_error_result(self, query: str, error: str) -> str:
-        """NUEVO - Mensaje de error mejorado."""
-        return f"""
-❌ **Error en la búsqueda:** No pude procesar tu consulta "{query}"
-
-**🔧 Posibles soluciones:**
-1. Reformula tu consulta con términos diferentes
-2. Ser más específico sobre el problema
-3. Incluir marca y modelo del equipo si los conoces
-
-**🔧 Para problemas urgentes:**
-• Reinicia el equipo y prueba nuevamente
-• Verifica conexiones básicas
-• Consulta el manual físico del equipo
-
-📋 **Error técnico:** {error}
-"""
-    
-    def close(self):
-        """Cierra la conexión a la base de datos."""
-        if self._connection and not self._connection.closed:
-            self._connection.close()
-            logger.debug("🔒 Conexión PostgreSQL cerrada")
 
 # =====================================================
 # RESTO DEL CÓDIGO ORIGINAL SIN CAMBIOS
@@ -405,7 +177,13 @@ class BuscarSolucionNode:
         self.logger = logging.getLogger(__name__)
         
         # CAMBIO PRINCIPAL: Usar RAG optimizado
-        self.knowledge_base = OptimizedEroskiKnowledgeBase()  # NUEVO RAG
+        if ENHANCED_RAG_AVAILABLE:
+            self.knowledge_base = OptimizedEroskiKnowledgeBaseWithMetadata()
+            self.logger.info("🔧 Usando RAG optimizado con metadatos")
+        else:
+            self.knowledge_base = OptimizedEroskiKnowledgeBase()
+            self.logger.info("⚠️ Usando RAG básico (sin metadatos)")
+        
         
         self.incidents_manager = EroskiIncidentsManager()
         self.faq_problem_tool = FAQ_ProblemIdentificationTool(self.incidents_manager)
@@ -424,6 +202,7 @@ class BuscarSolucionNode:
         
         self.agent = self._setup_agent()
         self.agent_faq = self._setup_agent_faq()
+        self.ordenar_chunks_chain = self._setup_ordenar_chunks_chain()
         self.identificacion_solucion_chain = self._setup_identificacion_solucion_chain()
         self.solution_fusion_chain = self._setup_solution_fusion_chain()
 
@@ -484,26 +263,28 @@ Responde únicamente con "si" o "no".
         - Mejor logging
         - Manejo de errores robusto
         """
-        self.logger.info(f"🔍 Ejecutando buscar_solucion_node con RAG optimizado")
+        self.logger.info("🔍 Ejecutando buscar_solucion_node con RAG optimizado")
         
         try:
             # Obtener información del estado
             messages = state.get("messages", [])
             last_message = messages[-1]
-
             incident_type = state.get("incident_type", "")
             problem_identified = state.get("problem_identified", False)
-            solution_found = state.get("solution_found", False)
-            pending_confirmation = state.get("pending_confirmation", False)
-            attempts = state.get("attempts", 0)
+            solution_attempts = state.get("solution_attempts",0)
+            max_solution_attempts = state.get("max_solution_attempts",0)
             incident_id = state.get("incident_id", None)
+            if solution_attempts >= max_solution_attempts:
+                return Command(update={
+                    "current_node": self.node_name,
+                    "awaiting_user_input": True,
+                    "escalation_needed":True
+                })
+            
+
             if not incident_id:
                 incident_id = get_incident_manager().manage_incident(state)
             logger.info(f"👹Incidente ID: {incident_id}👹")
-
-
-
-
             
             if not isinstance(last_message, HumanMessage):
                 return Command(update={
@@ -511,14 +292,13 @@ Responde únicamente con "si" o "no".
                     "awaiting_user_input": True
                 })
             
-            user_input = last_message.content
             
             # Base para actualizaciones del estado
             base_update = {
                 "incident_id": incident_id,
                 "current_node": self.node_name,
                 "last_activity": datetime.now(),
-                "attempts": attempts + 1
+                "solution_attempts": solution_attempts + 1
             }
             if not incident_type:
                 # Preparar actualización base del estado
@@ -527,9 +307,6 @@ Responde únicamente con "si" o "no".
                     "messages": [AIMessage(content="Primero debemos indentificar el tipo de incidencia.")],
                     "incident_type_confirmed": False
                 })
-
-
-
 
             # Lógica principal de identificación y búsqueda
             if not problem_identified:
@@ -542,7 +319,8 @@ Responde únicamente con "si" o "no".
                     return Command(update={
                         **base_update,
                         "messages": state.get("messages", []) + [AIMessage(content=response)],
-                        "awaiting_user_input": True
+                        "awaiting_user_input": True,
+                        "problem_identified": False
                     })
 
                 historial_formateado = format_full_chat_history(messages=messages)
@@ -556,181 +334,89 @@ Responde únicamente con "si" o "no".
                         logging.info(f"👹 problem_identified: {result['problem_identified']}")
                         base_update.update({"problem_description":result['problem_description']})
                         
-                        solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problem_description'])
 
+                        top_k = 3
+                        resultado_manual_chunks = self.knowledge_base.buscar_solucion_rag_avanzada(
+                            query=result['problem_description'],
+                            equipo_context={"tipo": incident_type},
+                            top_k=top_k,
+                            return_formato = "json"
+                        )
+                        # devuelve una lista de diccionarios con {texto, pag, similarity}
+                        lista_chunk = self._procesar_chunks(resultado_manual_chunks)
 
+                        solucion_manual_llm = await self.ordenar_chunks_chain({
+                            "lista_chunks": lista_chunk,
+                            "top_k": top_k,
+                            "chat_history": historial_formateado,
+                        })
 
-                        solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problem_description'])
-                        logging.info(f"👹 solucion manual rag: {solution_content_manual}")
+                        logging.info(f"👹 solucion manual rag: {solucion_manual_llm}")
+
                         #Empezamos a buscar en el json. Primero lo cargamo
                         problemas_dict = self.incidents_manager.get_problemas_soluciones(incident_type)
+                        
                         agent_response_faq = self.agent_faq.invoke({
                                                             "problema_identificado": result['problem_description'],
                                                             "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)})
-                        
                         logging.info(f"👹 solucion manual rag: {agent_response_faq}")
-                       
-                        solution_content_faq = agent_response_faq.get("solucion","No se identificó el problema")
-                        
+                        solucion_faq_llm = agent_response_faq.get("solucion","No se pudo encontrar solución entre las FAQ")
+                        logging.info(f"👹 solution_content_faq: {solucion_faq_llm}")
 
+                        msg_IA = ""
+                        #generar mensaje solución
+                        if solucion_manual_llm['problem_identified']:
+                            msg_IA = f"Esto es lo que encontré en el manual:\n\n{solucion_manual_llm['solution_content']}"
+                        if solucion_faq_llm['problem_identified']:
+                            msg_IA = f"Entre los FAQ encontré esto:\n\n{solucion_faq_llm['solution_content']}"
+                        if msg_IA == "":
+                            msg_IA = "Lo siento, no se pudo encontrar solución para este problema. Podrías darme más información?"
+                            response = self._mostrar_ejemplos_frecuentes(state.get("incident_type", ""))
+                            solution_attempts += 1
+                            return Command(update={
+                                **base_update,
+                                "messages": state.get("messages", []) + [AIMessage(content=response)],
+                                "awaiting_user_input": True,
+                            })
                         
-                        logging.info(f"👹 solution_content_faq: {solution_content_faq}")
+                        msg_IA = msg_IA + "\n\n¿resuelve esto tu cuestión?"
+                        return Command(update={
+                            **base_update,
+                            "messages": [
+                                AIMessage(content=msg_IA),
+                            ],
+                            "awaiting_user_input": True,
+                            "problem_identified": False
+                        })
                         
-                        if "no se identificó" in solution_content_faq.lower():
-                            solution_content_faq = ""
-                        command = await self._fusionar_soluciones(
-                            manual_solution=solution_content_manual,
-                            faq_solution=solution_content_faq,
-                            problem_description=result['problem_description'],
-                            solution_attempts=solution_attempts)
-                        
-                        return command
-                    
-                    else:
-                        solution_attempts += 1
+                    else:#no se ha identificado el problema. volvemos a preguntar
                         return Command(update={
                             **base_update,
                             "messages": [
                                 AIMessage(content=result['message_to_user'])
                             ],
-                            "solution_attempts":solution_attempts,
-                            "awaiting_user_input": True
+                            "awaiting_user_input": True,
+                            "problem_identified": False
                         })
-                        
-
-                except:
-                    kk  
-
-
-
-                # Usar herramienta FAQ para identificar problema
-                result = self.faq_problem_tool.identify_problem(user_input, incident_type)
-                
-                if result.get("confidence", 0) >= 0.75:
-                    # Alta confianza, pedir confirmación
-                    base_update.update({
-                        "pending_confirmation": True,
-                        "temp_problem_description": result.get("problema", user_input),
-                        "messages": messages + [
-                            AIMessage(content=f"""🎯 **Creo que he identificado tu problema:**
-
-**{result.get("problema", "Problema identificado")}**
-
-¿Es correcto? (Responde sí/no)
-
-💡 Si no es exactamente tu problema, puedes describirlo con más detalle.""")
+                except Exception as e:
+                    logging.error(f"Error en la identificación de la solución: {e}")
+                    return Command(update={
+                        **base_update,
+                        "messages": [
+                            AIMessage(content="Lo siento, no se pudo procesar tu solicitud. Por favor, intenta de nuevo.")
                         ],
-                        "awaiting_user_input": True
+                        "awaiting_user_input": True,
+                        "problem_identified": False
                     })
-                    
-                else:
-                    # Baja confianza, buscar directamente en manual
-                    self.logger.info(f"🔍 Confianza baja ({result.get('confidence', 0):.2f}), buscando directamente en manual")
-                    
-                    # LÍNEA CLAVE: Usar RAG optimizado directamente
-                    solution_content_manual = self.knowledge_base.buscar_solucion_rag(user_input)
-                    
-                    base_update.update({
-                        "problem_identified": True,
-                        "problem_description": user_input,
-                        "solution_content": solution_content_manual,
-                        "messages": messages + [
-                            AIMessage(content=f"""🔍 **He buscado información sobre tu consulta:**
-
-{solution_content_manual}
-
-**¿Esta información te ayuda con tu problema?** (Responde sí/no)
-
-💡 Si necesitas información más específica, puedes reformular tu pregunta.""")
-                        ],
-                        "awaiting_user_input": True
-                    })
-            
             else:
-                # Problema ya identificado, evaluar respuesta del usuario
-                if solution_found:
-                    # Ya se encontró solución, procesar feedback
-                    user_input_lower = user_input.lower()
-                    if any(word in user_input_lower for word in ['sí', 'si', 'yes', 'correcto', 'perfecto', 'gracias']):
-                        base_update.update({
-                            "conversation_completed": True,
-                            "messages": messages + [
-                                AIMessage(content="¡Perfecto! Me alegra haber podido ayudarte. Si tienes más problemas, no dudes en consultarme. 😊")
-                            ],
-                            "awaiting_user_input": False
-                        })
-                    else:
-                        # Usuario indica que la solución no funcionó
-                        extra_info_response = self.llm_extra_info_prompt | self.llm | self.parser_str
-                        has_extra_info = await extra_info_response.ainvoke({"user_message": user_input})
-                        
-                        if has_extra_info.strip().lower() == "si":
-                            # Nueva información, buscar nueva solución
-                            self.logger.info("🔄 Nueva información detectada, buscando solución actualizada")
-                            
-                            # LÍNEA CLAVE: Usar RAG optimizado con nueva información
-                            solution_content_manual = self.knowledge_base.buscar_solucion_rag(user_input)
-                            
-                            base_update.update({
-                                "solution_content": solution_content_manual,
-                                "messages": messages + [
-                                    AIMessage(content=f"""🔄 **Gracias por la información adicional. He buscado una nueva solución:**
+                return Command(update={
+                    "solution_found":True,
+                    "messages": [
+                        AIMessage(content="Ha sido un placer ayudarte")
+                    ],
+                    "awaiting_user_input": False
+                })
 
-{solution_content_manual}
-
-**¿Esta nueva información te ayuda?** (Responde sí/no)""")
-                                ],
-                                "awaiting_user_input": True
-                            })
-                        else:
-                            # No hay nueva información útil
-                            if attempts >= self.max_attempts:
-                                base_update.update({
-                                    "escalation_needed": True,
-                                    "messages": messages + [
-                                        AIMessage(content="Entiendo que las soluciones propuestas no han funcionado. Te recomiendo contactar con soporte técnico especializado para una asistencia más detallada. 📞")
-                                    ],
-                                    "awaiting_user_input": False
-                                })
-                            else:
-                                base_update.update({
-                                    "messages": messages + [
-                                        AIMessage(content="Entiendo que la solución no funcionó. ¿Podrías describir el problema de forma más específica?")
-                                    ],
-                                    "awaiting_user_input": True
-                                })
-                else:
-                    # Evaluar si el usuario está satisfecho con la información proporcionada
-                    user_input_lower = user_input.lower()
-                    if any(word in user_input_lower for word in ['sí', 'si', 'yes', 'correcto', 'perfecto', 'gracias', 'ayuda']):
-                        base_update.update({
-                            "solution_found": True,
-                            "conversation_completed": True,
-                            "messages": messages + [
-                                AIMessage(content="¡Excelente! Me alegra haber podido ayudarte con la información del manual técnico. Si tienes más consultas, estaré aquí para ayudarte. 😊")
-                            ],
-                            "awaiting_user_input": False
-                        })
-                    else:
-                        # Usuario no está satisfecho
-                        if attempts >= self.max_attempts:
-                            base_update.update({
-                                "escalation_needed": True,
-                                "messages": messages + [
-                                    AIMessage(content="He hecho varios intentos para ayudarte. Te recomiendo contactar con soporte técnico especializado para una asistencia más personalizada. 📞")
-                                ],
-                                "awaiting_user_input": False
-                            })
-                        else:
-                            base_update.update({
-                                "messages": messages + [
-                                    AIMessage(content="¿Podrías describir el problema de forma más específica?")
-                                ],
-                                "awaiting_user_input": True
-                            })
-            
-            return Command(update=base_update)
-            
         except Exception as e:
             self.logger.error(f"❌ Error en buscar_solucion_node: {e}")
             return Command(update={
@@ -741,13 +427,83 @@ Responde únicamente con "si" o "no".
                 ],
                 "awaiting_user_input": True
             })
-        
         finally:
             # Limpiar recursos
             try:
                 self.knowledge_base.close()
-            except:
+            except Exception as e:
+                self.logger.error(f"❌ Error al cerrar el RAG: {e}")
                 pass
+
+    def _procesar_chunks(self, resultado_manual: Dict[str, Any]) -> List[str]:
+
+        "Añade el chunk anterior y el posterior para darle contexto antes de pasarlo al llm"
+        try:
+            chunks = []
+            for item in resultado_manual['results']:
+                chunks = self.knowledge_base.get_chunk_with_context(item['chunk_id'])
+                chunks.append(
+                    {'page' : item['documento']['pagina_numero'],
+                    'texto' : chunks['chunk_anterior']['chunk_text']+'\n'+chunks['chunk_actual']['chunk_text']+'\n'+chunks['chunk_siguiente']['chunk_text']
+                    })
+            
+            lista_chunks = "\n\n".join(
+                f"[{i+1}] (página {chunk['page']})\n{chunk['text']}"
+                for i, chunk in enumerate(chunks)
+            )
+            return lista_chunks
+        except Exception as e:
+            self.logger.error(f"❌ Error en añadir_chunks: {e}")
+            return resultado_manual
+
+
+    async def _setup_ordenar_chunks_chain(self) -> Dict[str, Any]:
+        """Crea una cadena que analiza si los chunks del RAG responden al problema y devuelve el resultado."""
+
+        parser = JsonOutputParser(pydantic_object=OrdenarChunks)
+
+        prompt = PromptTemplate(
+            template="""
+    Eres un asistente técnico de Eroski.
+
+    Tu tarea es analizar los {top_k} fragmentos (chunks) recuperados mediante un sistema RAG para determinar si resuelven la consulta del usuario.
+
+    Ten en cuenta que el usuario puede estar describiendo un problema o consultando instrucciones específicas. Para comprender mejor el contexto, revisa el siguiente historial de mensajes:
+
+    HISTORIAL DE MENSAJES:
+    {chat_history}
+
+    A continuación, tienes los chunks junto con el número de página del manual de donde fueron extraídos:
+
+    {lista_chunks}
+
+    Debes hacer lo siguiente:
+    1. Leer los chunks detenidamente y determinar si alguno de ellos resuelve la consulta del usuario.
+    2. Si puedes generar una respuesta basada en el contenido de los chunks, hazlo e incluye las páginas utilizadas en tu respuesta.
+    3. Si **ninguno de los chunks** permite generar una respuesta clara, devuelve:
+    - "problem_identified": false
+    - "solution_content": ""
+    4. En cualquier caso, estima la confianza en tu evaluación entre 0 y 1, y devuélvela como "confidence".
+
+    ⚠️ No inventes ni asumas información que no esté explícitamente en los chunks. Limítate a interpretar su contenido.
+
+    Devuelve únicamente un JSON válido (sin markdown), con esta estructura:
+
+    {format_instructions}
+
+    Ejemplo:
+
+    {{
+    "problem_identified": true,
+    "confidence": 0.93,
+    "solution_content": "Para reiniciar la balanza, presiona el botón rojo durante 5 segundos. (página 4)"
+    }}
+    """,
+            input_variables=["chat_history", "lista_chunks", "top_k"],
+            partial_variables={"format_instructions": parser.get_format_instructions()},
+        )
+
+        return prompt | self.llm | parser
 
     # Resto de métodos auxiliares sin cambios...
     def _setup_tools_faq(self) -> List[Tool]:
@@ -783,9 +539,60 @@ Responde únicamente con "si" o "no".
         agent = create_react_agent(self.llm, self.tools, prompt)
         return AgentExecutor(agent=agent, tools=self.tools, verbose=True)
     
-    def _setup_agent_faq(self):
-        """Configura agente FAQ."""
-        return self._setup_agent()  # Simplificado
+    def _setup_agent_faq(self) -> Runnable:
+        parser = JsonOutputParser(pydantic_object=FAQ_ProblemMatch)
+        
+        """Configura el agente para buscar la solución en el archivo json que guarda los problemas más frecuentes.
+        Misión:
+        1. Identificar el problema dentro del listado de problemas para el tipo de incidente que hay en el json
+        2. Recuperar la solución más adecuada a ese problema.
+        
+        """
+        
+        prompt_template = PromptTemplate.from_template("""
+            Eres un asistente técnico que ayuda a identificar el problema más probable en función del historial de mensajes de un usuario y una lista de problemas conocidos.
+
+            ### Instrucciones:
+
+            1. Lee cuidadosamente el mensaje del usuario.
+            2. Compara su contenido con los problemas disponibles (las claves del JSON).
+            3. Devuelve el problema más parecido en el campo `"problem_name"` y la solución asociada en `"solution_content"`.
+            4. Estima una confianza (entre 0.0 y 1.0).
+            5. Si no hay ninguna coincidencia razonable (confianza < 0.4), responde con:
+            {{
+                "problem_identified": false,
+                "problem_name": "",
+                "confidence": 0.0,
+                "solution_content": ""
+            }}
+
+            Mensajes del usuario:
+            {problema_identificado}
+
+            Problemas conocidos:
+            {problemas_json}
+
+            ⚠️ No inventes ni asumas información que no esté explícitamente en los mensajes o problemas conocidos. Limítate a comparar texto y seleccionar la opción más adecuada.
+
+            Devuelve únicamente un JSON válido (sin markdown), con esta estructura:
+
+            {format_instructions}
+
+            Ejemplo:
+
+            {{
+            "problem_identified": true,
+            "problem_name": "La Balanza no imprime las Etiquetas",
+            "confidence": 0.93,
+            "solution_content": "Comprobar si tiene papel, y en caso afirmativo Apagar y Encender la Balanza"
+            }}
+            """)
+        
+
+        prompt = prompt_template.partial(format_instructions=parser.get_format_instructions())
+        chain = prompt | self.llm | parser
+
+        return chain
     
     def _setup_identificacion_solucion_chain(self) -> RunnableSequence:
         """Crea una cadena que analiza si el usuario ha descrito un problema técnico claro."""
@@ -806,7 +613,11 @@ Responde únicamente con "si" o "no".
         Si el usuario menciona expresamente que quiere hablar con un supervisor, o si da a entender que el problema no se ha resuelto adecuadamente, o que necesita ayuda adicional, entonces devuelve `"escalation_needed": true`.
         En todos los demás casos, devuelve `"escalation_needed": false`.
 
-        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado. El campo `solution_content` debe estar vacío.
+        ⚠️ NO busques soluciones todavía. Solo analiza si hay un problema identificado. 
+
+        Analiza el historial de mensajes {chat_history} para mantener una conversación fluida con el usuario.
+        Si le has pedido confirmación sobre algún punto del problema y el usuario no lo ha confirmado devuelve "problem_identified": false y vuelve a preguntarle nuevamente.
+        Si el usuario no responde o no responde con una respuesta clara, devuelve "problem_identified": false y vuelve a preguntarle amablemente.
 
         Ejemplo de json valido:
 
@@ -819,10 +630,9 @@ Responde únicamente con "si" o "no".
         {{
         "problem_identified": true,
         "confidence": 0.95,
-        "problema": "La balanza no imprime etiquetas",
+        "problem_description": "La balanza no imprime etiquetas",
         "requires_confirmation": false,
         "message_to_user": "Gracias por la información. Ahora intentaré ayudarte con este problema.",
-        "solution_content": "",
         "escalation_needed": false
         }}
 

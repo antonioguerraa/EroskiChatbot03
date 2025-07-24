@@ -28,6 +28,7 @@ class DatabaseChunkLoader:
     
     def __init__(self):
         self.settings = get_settings()
+        self.use_enhanced_table = False  # Por defecto tabla básica
     
     def _get_connection_string(self) -> str:
         """Construye string de conexión"""
@@ -134,7 +135,9 @@ class DatabaseChunkLoader:
     
     async def _insert_single_chunk(self, conn, chunk_data: Dict, doc_metadata: Dict):
         """Inserta un chunk individual en PostgreSQL"""
-        
+        if self.use_enhanced_table:
+            await self._insert_into_enhanced_table(conn, chunk_data, doc_metadata)
+            return
         # Extraer datos del chunk
         texto_original = chunk_data["texto_original"]
         embedding = chunk_data["embedding"]
@@ -179,6 +182,88 @@ class DatabaseChunkLoader:
             seccion_titulo,  # Usar seccion como capitulo también
             palabras_clave,
             json.dumps(metadata_completo)
+        )
+
+    async def _insert_into_enhanced_table(self, conn, chunk_data: Dict, doc_metadata: Dict):
+        """Inserta un chunk en la tabla knowledge_base_enhanced"""
+        
+        # Extraer datos del chunk
+        chunk_id = chunk_data["chunk_id"]
+        texto_original = chunk_data["texto_original"]
+        texto_procesado = chunk_data.get("texto_procesado", texto_original)
+        embedding = chunk_data["embedding"]
+        embedding_con_metadatos = chunk_data.get("embedding_con_metadatos", embedding)
+        palabras_clave = chunk_data["palabras_clave"]
+        entidades_tecnicas = chunk_data.get("entidades_tecnicas", [])
+        confidence = chunk_data.get("confidence_extraccion", 0.9)
+        
+        # Metadatos del documento
+        tipo_equipo = doc_metadata["tipo_equipo"]
+        marca = doc_metadata["marca"]
+        modelo = doc_metadata["modelo"]
+        version_manual = doc_metadata.get("version_manual", "1.0")
+        idioma = doc_metadata.get("idioma", "es")
+        hash_documento = doc_metadata.get("hash_documento", "")
+        
+        # Metadatos del chunk
+        chunk_metadata_dict = chunk_data["chunk_metadata"]
+        pagina_numero = chunk_metadata_dict["pagina_numero"]
+        seccion_titulo = chunk_metadata_dict["seccion_titulo"]
+        tipo_contenido = chunk_metadata_dict["tipo_contenido"]
+        nivel_jerarquia = chunk_metadata_dict.get("nivel_jerarquia", 3)
+        
+        # Posición en página
+        posicion = chunk_metadata_dict.get("posicion_en_pagina", {})
+        posicion_x = posicion.get("x", 0)
+        posicion_y = posicion.get("y", 0)
+        posicion_width = posicion.get("width", 0)
+        posicion_height = posicion.get("height", 0)
+        
+        # Líneas
+        numero_linea_inicio = chunk_metadata_dict.get("numero_linea_inicio", 0)
+        numero_linea_fin = chunk_metadata_dict.get("numero_linea_fin", 0)
+        
+        # IDs de chunks anterior/siguiente
+        chunk_anterior_id = chunk_metadata_dict.get("chunk_anterior_id")
+        chunk_siguiente_id = chunk_metadata_dict.get("chunk_siguiente_id")
+        
+        # Convertir embeddings al formato correcto
+        embedding_str = self._format_embedding_for_pgvector(embedding)
+        embedding_metadata_str = self._format_embedding_for_pgvector(embedding_con_metadatos)
+        
+        # Generar enlaces
+        pdf_link = f"/docs/{doc_metadata['filename']}"
+        web_viewer_link = f"/viewer/{doc_metadata['filename']}#page={pagina_numero}"
+        
+        # Insertar en knowledge_base_enhanced
+        await conn.execute("""
+            INSERT INTO knowledge_base_enhanced (
+                chunk_id, chunk_text, chunk_text_processed,
+                chunk_embedding, chunk_embedding_with_metadata,
+                documento_origen, tipo_equipo, marca, modelo, version_manual,
+                idioma, hash_documento, pagina_numero, seccion_titulo, tipo_contenido,
+                nivel_jerarquia, posicion_x, posicion_y, posicion_width, posicion_height,
+                numero_linea_inicio, numero_linea_fin, chunk_anterior_id, chunk_siguiente_id,
+                palabras_clave, entidades_tecnicas, confidence_extraccion,
+                pdf_link, web_viewer_link
+            ) VALUES (
+                $1, $2, $3, $4::vector, $5::vector, $6, $7, $8, $9, $10,
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                $21, $22, $23, $24, $25, $26, $27, $28, $29
+            )
+            ON CONFLICT (chunk_id) DO UPDATE SET
+                chunk_text = EXCLUDED.chunk_text,
+                chunk_embedding = EXCLUDED.chunk_embedding,
+                chunk_embedding_with_metadata = EXCLUDED.chunk_embedding_with_metadata
+        """,
+            chunk_id, texto_original, texto_procesado,
+            embedding_str, embedding_metadata_str,
+            doc_metadata["filename"], tipo_equipo, marca, modelo, version_manual,
+            idioma, hash_documento, pagina_numero, seccion_titulo, tipo_contenido,
+            nivel_jerarquia, posicion_x, posicion_y, posicion_width, posicion_height,
+            numero_linea_inicio, numero_linea_fin, chunk_anterior_id, chunk_siguiente_id,
+            palabras_clave, entidades_tecnicas, confidence,
+            pdf_link, web_viewer_link
         )
     
     def _format_embedding_for_pgvector(self, embedding: List[float]) -> str:

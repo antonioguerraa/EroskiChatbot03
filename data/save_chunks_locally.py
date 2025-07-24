@@ -264,18 +264,24 @@ async def load_and_save_to_database(filepath: str):
         print(f"📁 Cargados {len(chunks_data)} chunks desde archivo")
         
         # 2. Importar clase de BD (aquí puedes usar cualquier implementación)
-        from utils.advanced_document_vectorizer import EnhancedVectorizationDatabase
+        from utils.load_chunks_to_database import DatabaseChunkLoader
         
         # 3. Reconstruir objetos EnrichedChunk si es necesario
         # (o implementar guardado directo desde diccionario)
         
         # 4. Guardar en BD
-        db = EnhancedVectorizationDatabase()
+        # ✅ CAMBIAR POR:
+        loader = DatabaseChunkLoader()
+        loader.use_enhanced_table = True  # ← CLAVE: forzar tabla enhanced
+        success = await loader.load_and_save_chunks(filepath)
         
         # Aquí implementarías un método que tome diccionarios en lugar de objetos
         # success = await db.save_chunks_from_dict(chunks_data, doc_metadata)
         
-        print("✅ Chunks cargados y guardados en BD exitosamente")
+        if success:
+            print("✅ Chunks cargados y guardados en knowledge_base_enhanced exitosamente")
+        else:
+            print("❌ Error guardando chunks en BD")
         
     except Exception as e:
         print(f"❌ Error cargando/guardando: {e}")

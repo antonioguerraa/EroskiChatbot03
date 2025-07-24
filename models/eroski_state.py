@@ -156,6 +156,7 @@ class EroskiState(TypedDict, total=False):
     kb_articles: Optional[List[Dict]]      # Artículos de KB consultados
     extra_info_provided: bool               # Si se proporcionó información adicional
     solution_attempts: Optional[int]       # Intentos para obtener solución
+    max_solution_attempts: Optional[int]
     solution_validation_pending: bool        # Si estás esperando que el usuario confirme la solución
     
     # ========== ESCALACIÓN ==========
@@ -236,6 +237,7 @@ def create_initial_eroski_state(
         #incident_info_adicional_completa = True,
         intento_tienda = 0,
         max_intento_tienda = 2,
+        max_solution_attempts=4,
         tienda_identificada=False,
         busqueda_manual=True,
         busqueda_faq=True,

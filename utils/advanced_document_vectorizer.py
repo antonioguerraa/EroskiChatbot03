@@ -23,6 +23,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import numpy as np
 from urllib.parse import quote
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from config.settings import get_settings
 from utils.llm.providers import get_vectorizer, get_llm
@@ -101,7 +102,22 @@ class AdvancedDocumentVectorizer:
         self.chunk_size = 800
         self.chunk_overlap = 100
         self.min_chunk_size = 50
-        
+        self.kk = 0
+        # Configurar text splitter inteligente
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=[
+                "\n\n",    # Párrafos dobles
+                "\n",      # Líneas simples  
+                ". ",      # Oraciones
+                ", ",      # Comas
+                " ",       # Palabras
+                ""         # Caracteres
+            ],
+            length_function=len,
+            keep_separator=True
+        )
     async def vectorize_document_complete(
         self, 
         pdf_path: Path, 
@@ -311,6 +327,34 @@ class AdvancedDocumentVectorizer:
         page_num: int
     ) -> List[Dict[str, Any]]:
         """
+        Divide una página usando RecursiveCharacterTextSplitter
+        """
+        chunks = []
+        
+        # Usar text splitter inteligente
+        text_chunks = self.text_splitter.split_text(page_text)
+        self.kk = self.kk + len(text_chunks)
+        print(f"👹 Página {page_num}: {len(text_chunks)} chunks generados. Total: {self.kk}")
+         
+        for i, chunk_text in enumerate(text_chunks):
+            if len(chunk_text.strip()) >= self.min_chunk_size:
+                chunks.append(self._create_chunk_data(
+                    chunk_text.strip(),
+                    page_num,
+                    positions,  # Usar todas las posiciones de la página
+                    0,          # Línea inicio aproximada
+                    chunk_text.count('\n')  # Línea fin aproximada
+                ))
+        
+        return chunks
+
+    def _split_page_intelligently_kk(
+        self, 
+        page_text: str, 
+        positions: List[Dict], 
+        page_num: int
+    ) -> List[Dict[str, Any]]:
+        """
         Divide una página en chunks respetando párrafos y secciones
         """
         chunks = []
@@ -318,12 +362,16 @@ class AdvancedDocumentVectorizer:
         # Dividir por párrafos primero
         paragraphs = [p.strip() for p in page_text.split('\n\n') if p.strip()]
         
+        print(f"👹 len(paragraphs) = {len(paragraphs)}")
+
         current_chunk = ""
         current_positions = []
         chunk_start_line = 0
         line_counter = 0
         
         for paragraph in paragraphs:
+            print(f"👹 len(paragraph) = {len(paragraph)}")
+            print(f"👹 len(current_chunk + paragraph) = {len(current_chunk + paragraph)}")
             # Si agregar este párrafo excede el tamaño máximo
             if len(current_chunk + paragraph) > self.chunk_size and current_chunk:
                 # Guardar chunk actual

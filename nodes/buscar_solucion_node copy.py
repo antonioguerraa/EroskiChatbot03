@@ -66,166 +66,7 @@ class ProblemIdentificationResult(BaseModel):
     requiere_mas_info: bool = Field(description="Si se necesita más información para identificar el problema", default=False)
     solution_source: str = Field(description="Fuente de la solución: FAQ, Manual, Otros", default="Otros")
 
-class RobustJsonOutputParser(JsonOutputParser):
-    """
-    Parser JSON robusto que maneja respuestas LLM con markdown y otros formatos.
-    Basado en el patrón usado en authenticate_llm_driven.py
-    """
-    
-    def parse(self, text: str):
-        """Parsear respuesta LLM con múltiples estrategias de fallback."""
-        try:
-            # Estrategia 1: Parser original (JSON directo)
-            return super().parse(text)
-            
-        except Exception as e:
-            logger.warning(f"Parser JSON estándar falló: {e}")
-            # Si falla, usar estrategias de fallback
-            return self._robust_parse(text)
-    
-    def _robust_parse(self, text: str):
-        """Parser robusto con múltiples estrategias de extracción."""
-        import re
-        
-        # Limpiar texto básico
-        cleaned_text = text.strip()
-        
-        # Estrategia 2: Extraer JSON de bloques markdown
-        json_patterns = [
-            r'```json\s*\n(.*?)\n```',  # ```json ... ```
-            r'```\s*\n(.*?)\n```',     # ``` ... ```
-            r'\{.*?\}',                 # Buscar primer JSON válido
-        ]
-        
-        for pattern in json_patterns:
-            matches = re.findall(pattern, cleaned_text, re.DOTALL | re.IGNORECASE)
-            for match in matches:
-                try:
-                    # Limpiar match si es necesario
-                    json_str = match.strip() if isinstance(match, str) else cleaned_text
-                    result = json.loads(json_str)
-                    
-                    # Validar que es un dict
-                    if isinstance(result, dict):
-                        return result
-                except json.JSONDecodeError:
-                    continue
-        
-        # Estrategia 3: Buscar JSON directo en el texto
-        try:
-            # Intentar parsear todo el texto limpio
-            if cleaned_text.startswith('{') and cleaned_text.endswith('}'):
-                return json.loads(cleaned_text)
-        except json.JSONDecodeError:
-            pass
-        
-        # Estrategia 4: Fallback con valores por defecto
-        logger.error(f"No se pudo parsear JSON, usando valores por defecto. Texto: {text[:200]}...")
-        return {
-            "problema": "Error al procesar la consulta",
-            "confidence": 0.0,
-            "keywords": [],
-            "solucion": "",
-            "similar_a_ejemplo": False,
-            "requiere_mas_info": True
-        }
 
-class EroskiKnowledgeBase:
-    """Maneja la conexión y consultas a la base de conocimiento PostgreSQL."""
-    
-    def __init__(self):
-        self.settings = get_settings()
-        self.vectorizer = get_vectorizer()
-        self._connection = None
-    
-    def _get_connection(self):
-        """Obtiene una conexión a la base de datos PostgreSQL."""
-        if self._connection is None or self._connection.closed:
-            try:
-                # Preparar parámetros de conexión
-                conn_params = {
-                    "host": self.settings.database.host,
-                    "database": self.settings.database.name,
-                    "user": self.settings.database.user,
-                    "port": self.settings.database.port
-                }
-                
-                # Solo agregar password si no está vacío
-                if self.settings.database.password:
-                    conn_params["password"] = self.settings.database.password
-                
-                self._connection = psycopg2.connect(**conn_params)
-
-            except Exception as e:
-                logger.error(f"Error conectando a PostgreSQL: {e}")
-                raise
-        return self._connection
-    
-    def buscar_solucion_rag(self, query: str, top_k: int = 3) -> str:
-        """
-        Realiza búsqueda semántica en la base de conocimiento usando RAG.
-        
-        Args:
-            query: Consulta del usuario
-            top_k: Número de resultados a devolver
-            
-        Returns:
-            str: Texto con las mejores soluciones encontradas
-        """
-        try:
-            # Vectorizar la consulta
-            query_embedding = self.vectorizer.embed(query)
-            
-            # Convertir a formato compatible con PostgreSQL
-            query_vector = np.array(query_embedding)
-            
-            conn = self._get_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                # Búsqueda por similitud coseno usando el índice ivfflat
-                sql = """
-                SELECT 
-                    chunk_text,
-                    documento_origen,
-                    pagina_numero,
-                    palabras_clave,
-                    1 - (chunk_embedding <=> %s::vector) as similarity
-                FROM knowledge_base
-                WHERE 1 - (chunk_embedding <=> %s::vector) > 0.7
-                ORDER BY chunk_embedding <=> %s::vector
-                LIMIT %s;
-                """
-                
-                cursor.execute(sql, (query_vector.tolist(), query_vector.tolist(), 
-                                   query_vector.tolist(), top_k))
-                results = cursor.fetchall()
-                
-                if not results:
-                    return "No se encontraron soluciones relevantes en los manuales. (Manual)"
-                
-                # Formatear resultados
-                soluciones = []
-                for i, result in enumerate(results, 1):
-                    solucion = f"""
-**Solución {i} (Manual)** (Fuente: {result['documento_origen']}, Página: {result['pagina_numero']})
-Similitud: {result['similarity']:.2f}
-
-{result['chunk_text']}
-
-Palabras clave: {result['palabras_clave']}
----
-"""
-                    soluciones.append(solucion)
-                
-                return "\n".join(soluciones)
-                
-        except Exception as e:
-            logger.error(f"Error en búsqueda RAG: {e}")
-            return f"Error al buscar en los manuales: {str(e)}"
-    
-    def close(self):
-        """Cierra la conexión a la base de datos."""
-        if self._connection and not self._connection.closed:
-            self._connection.close()
 
 class FAQ_ProblemIdentificationTool:
     """Tool para identificar problemas específicos usando LLM con JSON output estructurado.
@@ -454,16 +295,11 @@ Responde únicamente con "si" o "no".
         if not incident_id:
             incident_id = get_incident_manager().manage_incident(state)
         logger.info(f"👹Incidente ID: {incident_id}👹")
-        
-        
-        
         base_update = {
             "incident_id": incident_id,
             "current_node": self.node_name,
             "last_activity": datetime.now()
         }
-
-
         try:
             incident_type = state.get("incident_type")
             if not incident_type:
@@ -876,8 +712,8 @@ Responde únicamente con "si" o "no".
 
             Tu tarea es:
 
-            1. Verifica si el contenido del manual o del FAQ está claramente relacionado con el problema detectado.
-            2. Si una solución **no está relacionada**, ignórala.
+            1. Verifica si el contenido del manual o del FAQ está claramente relacionado con lo indicado por el usuario.
+            2. Si alguna **no está relacionada**, ignórala.
             3. Si ninguna está relacionada, genera un mensaje amable pidiendo más detalles técnicos.
             4. Si ya se pidió más información antes y aún no se puede resolver, sugiere escalar a un supervisor (`escalation_needed = true`).
             5. Si hay al menos una solución relacionada, construye un mensaje claro y bien redactado:

@@ -19,7 +19,7 @@ import json
 import re
 import time
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from dataclasses import dataclass, asdict
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
@@ -1833,6 +1833,101 @@ class EnhancedRAGResponseFormatter:
     Formateador de respuestas que incluye enlaces y metadatos ricos
     """
     
+    def format_results_as_json(
+        self, 
+        results: List[MetadataSearchResult],
+        query: str,
+        include_debug_info: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Formatea resultados como JSON con todos los metadatos
+        """
+        
+        if not results:
+            return {
+                "query": query,
+                "total_results": 0,
+                "results": [],
+                "status": "no_results",
+                "message": "No se encontraron resultados relevantes"
+            }
+        
+        formatted_results = []
+        
+        for i, result in enumerate(results, 1):
+            result_json = {
+                "index": i,
+                "chunk_id": result.chunk_id,
+                "similarity": round(result.similarity, 4),
+                "confidence": round(result.confidence, 4),
+                
+                # Información del documento
+                "documento": {
+                    "filename": result.documento_origen,
+                    "pagina_numero": result.pagina_numero,
+                    "seccion_titulo": result.seccion_titulo,
+                    "tipo_contenido": result.tipo_contenido,
+                    "nivel_jerarquia": result.nivel_jerarquia
+                },
+                
+                # Información del equipo
+                "equipo": {
+                    "tipo_equipo": result.tipo_equipo,
+                    "marca": result.marca,
+                    "modelo": result.modelo,
+                    "version_manual": result.version_manual
+                },
+                
+                # Posición y coordenadas
+                "posicion": {
+                    "x": result.posicion_en_pagina.get("x", 0),
+                    "y": result.posicion_en_pagina.get("y", 0),
+                    "width": result.posicion_en_pagina.get("width", 0),
+                    "height": result.posicion_en_pagina.get("height", 0)
+                },
+                
+                # Contenido
+                "contenido": {
+                    "texto": result.chunk_text,
+                    "texto_length": len(result.chunk_text),
+                    "palabras_clave": result.palabras_clave or [],
+                    "entidades_tecnicas": result.entidades_tecnicas or []
+                },
+                
+                # Enlaces
+                "enlaces": {
+                    "pdf_link": result.pdf_link or "",
+                    "web_viewer_link": result.web_viewer_link or ""
+                },
+                
+                # Navegación entre chunks
+                "navegacion": {
+                    "chunk_anterior_id": result.chunk_anterior_id,
+                    "chunk_siguiente_id": result.chunk_siguiente_id
+                }
+            }
+            
+            # Información debug opcional
+            if include_debug_info:
+                result_json["debug"] = {
+                    "chunk_anterior_id": result.chunk_anterior_id,
+                    "chunk_siguiente_id": result.chunk_siguiente_id,
+                    "contexto_adicional": getattr(result, 'contexto_adicional', None)
+                }
+            
+            formatted_results.append(result_json)
+        
+        return {
+            "query": query,
+            "total_results": len(results),
+            "results": formatted_results,
+            "status": "success",
+            "execution_info": {
+                "top_similarity": max([r.similarity for r in results]) if results else 0,
+                "avg_confidence": sum([r.confidence for r in results]) / len(results) if results else 0
+            }
+        }
+
     def format_results_with_links(
         self, 
         results: List[MetadataSearchResult],
@@ -1987,8 +2082,9 @@ class IntegratedMetadataRAG:
         top_k: int = 3,
         equipo_context: Optional[Dict[str, str]] = None,
         include_links: bool = True,
-        formato_debug: bool = False
-    ) -> str:
+        formato_debug: bool = False,
+        return_format: str = "text"  # ← NUEVO PARÁMETRO
+        ) -> Union[str, Dict[str, Any]]:  # ← CAMBIO TIPO RETORNO
         """
         Método principal para búsqueda con metadatos
         
@@ -1998,6 +2094,7 @@ class IntegratedMetadataRAG:
             equipo_context: {"tipo": "balanza", "marca": "DIBAL", "modelo": "Mistral"}
             include_links: Si incluir enlaces directos
             formato_debug: Si incluir información de debug
+            return_format: "text" para string formateado, "json" para diccionario
         """
         
         try:
@@ -2018,19 +2115,33 @@ class IntegratedMetadataRAG:
                 include_links=include_links,
                 include_context=True
             )
+            if return_format == "json":
+                return self.formatter.format_results_as_json(
+                    results=results,
+                    query=query,
+                    include_debug_info=formato_debug
+                )
+            else: 
             
-            # Formatear respuesta
-            formatted_response = self.formatter.format_results_with_links(
-                results=results,
-                query=query,
-                include_debug_info=formato_debug
-            )
+                return self.formatter.format_results_with_links(
+                    results=results,
+                    query=query,
+                    include_debug_info=formato_debug
+                )
             
-            return formatted_response
             
         except Exception as e:
-            logger.error(f"Error en búsqueda con metadatos: {e}")
-            return f"❌ Error en la búsqueda: {str(e)}"
+            error_response = f"Error en búsqueda con metadatos: {str(e)}"
+            
+            if return_format == "json":
+                return {
+                    "query": query,
+                    "status": "error",
+                    "error": str(e),
+                    "results": []
+                }
+            else:
+                return error_response
     
     async def buscar_por_equipo_especifico(
         self,
@@ -2130,13 +2241,17 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
     def __init__(self):
         super().__init__()
         self.metadata_rag = IntegratedMetadataRAG()
+        self.rag_searcher = MetadataEnhancedRAGSearcher()
+
+        
     
     async def buscar_solucion_rag_avanzada(
         self,
         query: str,
         top_k: int = 3,
         equipo_context: Optional[Dict[str, str]] = None,
-        incluir_enlaces: bool = True
+        incluir_enlaces: bool = True,
+        return_formato: str = "json"
     ) -> str:
         """
         Búsqueda RAG avanzada con metadatos y enlaces
@@ -2147,20 +2262,298 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             equipo_context: Contexto del equipo {"tipo": "balanza", "marca": "DIBAL"}
             incluir_enlaces: Si incluir enlaces directos al PDF
         """
-        
+
         # Primero intentar búsqueda con metadatos
         try:
-            return await self.metadata_rag.buscar_con_metadatos(
+            resultado = await self.metadata_rag.buscar_con_metadatos(
                 query=query,
                 top_k=top_k,
                 equipo_context=equipo_context,
-                include_links=incluir_enlaces
+                include_links=incluir_enlaces,
+                return_format=return_formato
             )
+
+
+            print(f" 👹 resultado: {resultado}")
+            return resultado
         except Exception as e:
             logger.warning(f"Fallback a búsqueda estándar: {e}")
             # Fallback a búsqueda original
             return self.buscar_solucion_rag(query, top_k)
     
+    async def get_chunk_with_context(
+        self,
+        chunk_id: str,
+        include_previous: bool = True,
+        include_next: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Obtiene un chunk específico junto con el anterior y posterior
+        
+        Args:
+            chunk_id: ID del chunk a buscar
+            include_previous: Si incluir chunk anterior
+            include_next: Si incluir chunk siguiente
+            
+        Returns:
+            Dict con chunk_actual, chunk_anterior, chunk_siguiente
+        """
+        
+        conn = await asyncpg.connect(self.rag_searcher._build_connection_string())
+        
+        try:
+            # 1. Obtener el chunk principal
+            chunk_actual = await self._get_single_chunk(conn, chunk_id)
+            
+            if not chunk_actual:
+                return {
+                    "status": "error",
+                    "message": f"Chunk {chunk_id} no encontrado",
+                    "chunk_actual": None,
+                    "chunk_anterior": None,
+                    "chunk_siguiente": None
+                }
+            
+            result = {
+                "status": "success",
+                "chunk_actual": chunk_actual,
+                "chunk_anterior": None,
+                "chunk_siguiente": None
+            }
+            print(f"👹chunk_actual, {chunk_actual['navegacion']}")
+            # 2. Obtener chunk anterior si existe y se solicita
+            if include_previous and chunk_actual['navegacion']['chunk_anterior_id']:
+                result["chunk_anterior"] = await self._get_single_chunk(
+                    conn, chunk_actual['navegacion']['chunk_anterior_id']
+                )
+            
+            # 3. Obtener chunk siguiente si existe y se solicita
+            if include_next and chunk_actual['navegacion']['chunk_siguiente_id']:
+                result["chunk_siguiente"] = await self._get_single_chunk(
+                    conn, chunk_actual['navegacion']['chunk_siguiente_id']
+                )
+            
+            return result
+            
+        finally:
+            await conn.close()
+
+    async def _get_single_chunk(self, conn, chunk_id: str) -> Optional[Dict[str, Any]]:
+        """Obtiene un chunk individual por ID"""
+        
+        try:
+            # Intentar tabla enhanced primero
+            result = await conn.fetchrow("""
+                SELECT 
+                    chunk_id, chunk_text, documento_origen,
+                    tipo_equipo, marca, modelo, version_manual,
+                    pagina_numero, seccion_titulo, tipo_contenido, nivel_jerarquia,
+                    posicion_x, posicion_y, posicion_width, posicion_height,
+                    numero_linea_inicio, numero_linea_fin,
+                    chunk_anterior_id, chunk_siguiente_id,
+                    palabras_clave, entidades_tecnicas, confidence_extraccion,
+                    pdf_link, web_viewer_link,
+                    created_at
+                FROM knowledge_base_enhanced
+                WHERE chunk_id = $1
+            """, chunk_id)
+            
+            if result:
+                return {
+                    "chunk_id": result["chunk_id"],
+                    "chunk_text": result["chunk_text"],
+                    "documento_origen": result["documento_origen"],
+                    "equipo": {
+                        "tipo_equipo": result["tipo_equipo"],
+                        "marca": result["marca"],
+                        "modelo": result["modelo"],
+                        "version_manual": result["version_manual"]
+                    },
+                    "ubicacion": {
+                        "pagina_numero": result["pagina_numero"],
+                        "seccion_titulo": result["seccion_titulo"],
+                        "tipo_contenido": result["tipo_contenido"],
+                        "nivel_jerarquia": result["nivel_jerarquia"]
+                    },
+                    "posicion": {
+                        "x": result["posicion_x"],
+                        "y": result["posicion_y"],
+                        "width": result["posicion_width"],
+                        "height": result["posicion_height"]
+                    },
+                    "lineas": {
+                        "inicio": result["numero_linea_inicio"],
+                        "fin": result["numero_linea_fin"]
+                    },
+                    "navegacion": {
+                        "chunk_anterior_id": result["chunk_anterior_id"],
+                        "chunk_siguiente_id": result["chunk_siguiente_id"]
+                    },
+                    "metadatos": {
+                        "palabras_clave": result["palabras_clave"] or [],
+                        "entidades_tecnicas": result["entidades_tecnicas"] or [],
+                        "confidence_extraccion": result["confidence_extraccion"]
+                    },
+                    "enlaces": {
+                        "pdf_link": result["pdf_link"] or "",
+                        "web_viewer_link": result["web_viewer_link"] or ""
+                    },
+                    "created_at": result["created_at"]
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo chunk {chunk_id}: {e}")
+            return None
+
+    async def get_chunks_by_page(
+        self,
+        documento_origen: str,
+        pagina_numero: int,
+        tipo_equipo: Optional[str] = None,
+        marca: Optional[str] = None,
+        modelo: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los chunks de una página específica ordenados
+        """
+        
+        conn = await asyncpg.connect(self._build_connection_string())
+        
+        try:
+            # Construir filtros
+            base_sql = """
+                SELECT 
+                    chunk_id, chunk_text, documento_origen,
+                    tipo_equipo, marca, modelo, version_manual,
+                    pagina_numero, seccion_titulo, tipo_contenido,
+                    posicion_x, posicion_y, posicion_width, posicion_height,
+                    numero_linea_inicio, numero_linea_fin,
+                    chunk_anterior_id, chunk_siguiente_id,
+                    confidence_extraccion
+                FROM knowledge_base_enhanced
+                WHERE documento_origen = $1 AND pagina_numero = $2
+            """
+            
+            params = [documento_origen, pagina_numero]
+            param_count = 2
+            
+            # Añadir filtros opcionales
+            if tipo_equipo:
+                param_count += 1
+                base_sql += f" AND LOWER(tipo_equipo) = LOWER(${param_count})"
+                params.append(tipo_equipo)
+            
+            if marca:
+                param_count += 1
+                base_sql += f" AND LOWER(marca) = LOWER(${param_count})"
+                params.append(marca)
+            
+            if modelo:
+                param_count += 1
+                base_sql += f" AND LOWER(modelo) = LOWER(${param_count})"
+                params.append(modelo)
+            
+            # Ordenar por posición en la página
+            base_sql += " ORDER BY posicion_y, posicion_x, numero_linea_inicio"
+            
+            results = await conn.fetch(base_sql, *params)
+            
+            chunks = []
+            for result in results:
+                chunks.append({
+                    "chunk_id": result["chunk_id"],
+                    "chunk_text": result["chunk_text"],
+                    "posicion": {
+                        "x": result["posicion_x"],
+                        "y": result["posicion_y"],
+                        "width": result["posicion_width"],
+                        "height": result["posicion_height"]
+                    },
+                    "lineas": {
+                        "inicio": result["numero_linea_inicio"],
+                        "fin": result["numero_linea_fin"]
+                    },
+                    "navegacion": {
+                        "chunk_anterior_id": result["chunk_anterior_id"],
+                        "chunk_siguiente_id": result["chunk_siguiente_id"]
+                    },
+                    "seccion_titulo": result["seccion_titulo"],
+                    "tipo_contenido": result["tipo_contenido"]
+                })
+            
+            return chunks
+            
+        finally:
+            await conn.close()
+
+    async def navigate_chunks(
+        self,
+        chunk_id: str,
+        direction: str = "next",  # "next", "previous", "both"
+        steps: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Navega entre chunks relacionados
+        
+        Args:
+            chunk_id: ID del chunk de inicio
+            direction: "next", "previous", "both"
+            steps: Número de pasos a navegar
+            
+        Returns:
+            Dict con los chunks encontrados
+        """
+        
+        conn = await asyncpg.connect(self._build_connection_string())
+        
+        try:
+            current_chunk = await self._get_single_chunk(conn, chunk_id)
+            
+            if not current_chunk:
+                return {"error": f"Chunk {chunk_id} no encontrado"}
+            
+            result = {
+                "current_chunk": current_chunk,
+                "navigation": {
+                    "previous_chunks": [],
+                    "next_chunks": []
+                }
+            }
+            
+            # Navegar hacia atrás
+            if direction in ["previous", "both"]:
+                prev_id = current_chunk["navegacion"]["chunk_anterior_id"]
+                for i in range(steps):
+                    if prev_id:
+                        prev_chunk = await self._get_single_chunk(conn, prev_id)
+                        if prev_chunk:
+                            result["navigation"]["previous_chunks"].append(prev_chunk)
+                            prev_id = prev_chunk["navegacion"]["chunk_anterior_id"]
+                        else:
+                            break
+                    else:
+                        break
+            
+            # Navegar hacia adelante
+            if direction in ["next", "both"]:
+                next_id = current_chunk["navegacion"]["chunk_siguiente_id"]
+                for i in range(steps):
+                    if next_id:
+                        next_chunk = await self._get_single_chunk(conn, next_id)
+                        if next_chunk:
+                            result["navigation"]["next_chunks"].append(next_chunk)
+                            next_id = next_chunk["navegacion"]["chunk_siguiente_id"]
+                        else:
+                            break
+                    else:
+                        break
+            
+            return result
+            
+        finally:
+            await conn.close()
     # Mantener compatibilidad con método original
     def buscar_solucion_rag(self, query: str, top_k: int = 3) -> str:
         """Método original para compatibilidad"""
