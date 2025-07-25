@@ -52,5 +52,95 @@
     "solution_content": null,
     "escalation_needed": false,
     "escalation_reason": null
+  },
+  "ER-4750": {
+    "codigo_incidencia": "ER-4750",
+    "timestamp_creacion": "2025-07-25T12:21:57.757612",
+    "estado": "pendiente_usuario",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario pregunta cómo funciona la retroiluminación de la balanza.",
+      "Consulta sobre cómo funciona la retroiluminación de la balanza."
+    ],
+    "solution_found": true,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "como funciona la retroiluminacion",
+        "timestamp": "2025-07-25T12:23:02.450764"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-25T12:23:02.450764"
+      },
+      {
+        "type": "AIMessage",
+        "content": "📘 Manual:\nLa retroiluminación del display puede configurarse en tres modos diferentes: \n1. **Apagado**: La retroiluminación permanece apagada incluso durante las operaciones con la balanza.\n2. **Encendido**: La retroiluminación está continuamente encendida, aunque no se esté trabajando con la máquina.\n3. **Modo Tiempo**: La retroiluminación se enciende cuando se realizan operaciones con la balanza y se apaga automáticamente aproximadamente 30 segundos después de que no se esté trabajando con ella.\n\nPara configurar la retroiluminación, siga estos pasos:\n1. Asegúrese de que la máquina está en la pantalla de pesaje.\n2. Pulse la tecla **SHIFT** y, a continuación, la tecla ****.\n3. Seleccione el modo de trabajo deseado utilizando la tecla **C**.\n4. Para guardar el valor, pulse la tecla ****.\n\n🔗 **Referencias directas:**\n• 📄 [Página 29 (Dibal Mistral)](http://localhost:8000/docs/Manual%20Balanza%20DIBAL%20Mistral.pdf#page=29)\n• 🖥️ [Ver con resaltado automático](http://localhost:8000/viewer/Manual%20Balanza%20DIBAL%20Mistral.pdf?page=29&highlight=%7B%22x%22%3A+221.17082068038314%2C+%22y%22%3A+408.3743529646364%2C+%22width%22%3A+158.93299510380993%2C+%22height%22%3A+11.276811730371763%2C+%22color%22%3A+%22rgba%28255%2C+255%2C+0%2C+0.3%29%22%2C+%22chunk_id%22%3A+%22chunk_000127%22%2C+%22page%22%3A+29%7D)\n• 📄 [Página 29 (Dibal Mistral)](http://localhost:8000/docs/Manual%20Balanza%20DIBAL%20Mistral.pdf#page=29)\n• 🖥️ [Ver con resaltado automático](http://localhost:8000/viewer/Manual%20Balanza%20DIBAL%20Mistral.pdf?page=29&highlight=%7B%22x%22%3A+221.17082068038314%2C+%22y%22%3A+408.3743529646364%2C+%22width%22%3A+158.93299510380993%2C+%22height%22%3A+11.276811730371763%2C+%22color%22%3A+%22rgba%28255%2C+255%2C+0%2C+0.3%29%22%2C+%22chunk_id%22%3A+%22chunk_000126%22%2C+%22page%22%3A+29%7D)\n\n💡 **Tip:** Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento.\n\n¿Resuelve esto tu cuestión?",
+        "timestamp": "2025-07-25T12:23:02.450764"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "si",
+        "timestamp": "2025-07-25T12:23:02.450764"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias por confirmar que tu consulta ha sido resuelta. Si necesitas más ayuda, no dudes en preguntar.",
+        "timestamp": "2025-07-25T12:23:02.450764"
+      }
+    ],
+    "session_id": "test_session_1_20250725_122118",
+    "timestamp_actualizacion": "2025-07-25T12:23:02.450764",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-4948": {
+    "codigo_incidencia": "ER-4948",
+    "timestamp_creacion": "2025-07-25T12:23:30.545361",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "Consulta sobre cómo realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "como se hace un backup?",
+        "timestamp": "2025-07-25T12:23:31.910075"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-25T12:23:31.910075"
+      }
+    ],
+    "session_id": "test_session_1_20250725_122322",
+    "timestamp_actualizacion": "2025-07-25T12:23:31.910075",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
   }
 }

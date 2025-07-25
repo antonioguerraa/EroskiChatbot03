@@ -72,7 +72,7 @@ class IdentificadorTester:
     
     def __init__(self):
         self.state = None
-        self.session_counter = 0
+        
         self.graph = None
         
         

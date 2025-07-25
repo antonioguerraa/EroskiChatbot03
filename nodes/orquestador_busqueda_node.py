@@ -10,12 +10,13 @@ from models.eroski_state import EroskiState
 from models.ordenar_chunks import OrdenarChunks
 from utils.llm.providers import get_llm
 from nodes.improved_eroski_knowledge_base import OptimizedEroskiKnowledgeBaseWithMetadata
-from nodes.buscar_solucion_node import BuscarSolucionNode
+from src.nodes.buscar_solucion_node import BuscarSolucionNode
 from utils.cargar_incidentes import EroskiIncidentsManager
 from utils.construir_historico_mensajes import format_full_chat_history
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from utils.incident_manager import get_incident_manager
+from utils.document_link_generator import DocumentLinkGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,9 @@ class OrquestadorBusquedaNode:
         self.faq_tool = faq_tool
         self.ordenar_chunks_chain = ordenar_chunks_chain
         self.agent_faq = agent_faq
+        self.link_generator = DocumentLinkGenerator()
         self.logger = logging.getLogger(__name__)
+        self.chunks_metadata = {}
 
     async def execute(self, state: EroskiState) -> dict:
         print("👹👹👹 Entra en el orquestador de búsqueda 👹👹👹")
@@ -156,8 +159,6 @@ class OrquestadorBusquedaNode:
                 "last_activity": datetime.now()
             }
 
-
-
             # --- 1. Buscar en manual (RAG) ---
             top_k = 3
             resultado_manual = await self.knowledge_base.buscar_solucion_rag_avanzada(
@@ -167,9 +168,8 @@ class OrquestadorBusquedaNode:
                 return_formato="json"
             )
             if resultado_manual['results']:
-                lista_chunk = await self._procesar_chunks(resultado_manual)
-
-            #logging.info(f"👹 lista_chunk: {lista_chunk}")
+                lista_chunk = await self._procesar_chunks_con_metadatos(resultado_manual)
+        
 
                 rag_result = await self.ordenar_chunks_chain.ainvoke({
                     "lista_chunks": lista_chunk,
@@ -187,15 +187,19 @@ class OrquestadorBusquedaNode:
                 "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)
             })
 
-            # --- 3. Fusionar resultados ---
+            # --- 3. Fusionar resultados CON ENLACES ---
             mensajes = []
             if resultado_manual['results'] and rag_result.get("problem_identified"):
-                mensajes.append(f"📘 Manual:\n{rag_result['solution_content']}")
-            print("👹check 4")
+                # MODIFICADO: Generar solución con enlaces
+                solucion_con_enlaces = await self._generar_solucion_con_enlaces(
+                    rag_result['solution_content'], 
+                    chunck_list
+                )
+                mensajes.append(f"📘 Manual:\n{solucion_con_enlaces}")
+
             if faq_result.get("problem_identified"):
                 mensajes.append(f"📋 FAQ:\n{faq_result['solution_content']}")
 
-            print(f"👹check 5 mensajes: {mensajes}")
             if not mensajes:
                 msg = "Lo siento, no se encontró solución en el manual ni en las incidencias frecuentes. ¿Podrías darme más información?"
                 return {
@@ -223,7 +227,144 @@ class OrquestadorBusquedaNode:
                 "awaiting_user_input": True
             }
 
+
+    # NUEVO MÉTODO: Procesar chunks guardando metadatos
+    async def _procesar_chunks_con_metadatos(self, resultado_manual: Dict[str, Any]) -> str:
+        """
+        Procesa chunks para el LLM Y guarda metadatos para generar enlaces después
+        """
+        chunks_list = []
+        self.chunks_metadata = {}  # Reset metadatos
+        
+        for item in resultado_manual['results']:
+            try:
+                chunks = await self.knowledge_base.get_chunk_with_context(item['chunk_id'])
+                
+                if not chunks:
+                    continue
+                
+                # GUARDAR METADATOS para uso posterior
+                self.chunks_metadata[item['chunk_id']] = {
+                    'documento': item.get('documento', {}),
+                    'equipo': item.get('equipo', {}),
+                    'posicion': item.get('posicion', {}),
+                    'similarity': item.get('similarity', 0),
+                    'confidence': item.get('confidence', 0)
+                }
+                
+                # FORMATO PARA EL LLM (tu formato existente)
+                chunks_list.append({
+                    'chunk_id': item['chunk_id'],
+                    'page': item['documento']['pagina_numero'],
+                    'text': (
+                        chunks['chunk_anterior']['chunk_text'] + "\n" +
+                        chunks['chunk_actual']['chunk_text'] + "\n" +
+                        chunks['chunk_siguiente']['chunk_text']
+                    )
+                })
+                
+            except Exception as e:
+                self.logger.error(f"Error procesando chunk {item.get('chunk_id', 'unknown')}: {e}")
+                continue
+        
+        # RETORNAR STRING para el LLM (tu formato existente)
+        return "\n\n".join(
+            f"[{i+1}] (chunk_id {c['chunk_id']})\npágina {c['page']})\n{c['text']}"
+            for i, c in enumerate(chunks_list)
+        )
+
+    # NUEVO MÉTODO: Generar solución final con enlaces
+    async def _generar_solucion_con_enlaces(self, solution_content: str, chunk_id_list: List[str]) -> str:
+        """
+        Toma la solución del LLM y agrega enlaces de los chunks utilizados
+        """
+        if not chunk_id_list or not self.chunks_metadata:
+            return solution_content
+        
+        # Generar enlaces para los chunks utilizados
+        enlaces_chunks = []
+        
+        for chunk_id in chunk_id_list:
+            if chunk_id in self.chunks_metadata:
+                metadata = self.chunks_metadata[chunk_id]
+                
+                # Verificar si podemos generar enlaces
+                if self._puede_generar_enlaces(metadata):
+                    try:
+                        enlaces = self.link_generator.generate_chunk_link(
+                            documento_origen=metadata['documento']['filename'],
+                            pagina_numero=metadata['documento']['pagina_numero'],
+                            chunk_coordinates=metadata['posicion'],
+                            chunk_id=chunk_id
+                        )
+                        
+                        enlace_info = {
+                            'chunk_id': chunk_id,
+                            'page': metadata['documento']['pagina_numero'],
+                            'documento': metadata['documento']['filename'],
+                            'equipo': metadata['equipo'],
+                            'enlaces': enlaces
+                        }
+                        
+                        enlaces_chunks.append(enlace_info)
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Error generando enlace para chunk {chunk_id}: {e}")
+        
+        # Construir solución con enlaces
+        solucion_final = solution_content
+        
+        if enlaces_chunks:
+            solucion_final += "\n\n🔗 **Referencias directas:**"
+            
+            for enlace in enlaces_chunks:
+                equipo_info = ""
+                if enlace['equipo'].get('marca'):
+                    equipo_info = f" ({enlace['equipo']['marca']} {enlace['equipo'].get('modelo', '')})"
+                
+                enlace_linea = f"""
+• 📄 [Página {enlace['page']}{equipo_info}]({enlace['enlaces']['pdf_link']})
+• 🖥️ [Ver con resaltado automático]({enlace['enlaces']['web_viewer_link']})"""
+                
+                solucion_final += enlace_linea
+            
+            solucion_final += "\n\n💡 **Tip:** Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento."
+        
+        return solucion_final
+
+    # MÉTODO AUXILIAR: Verificar si podemos generar enlaces
+    def _puede_generar_enlaces(self, metadata: Dict[str, Any]) -> bool:
+        """
+        Verifica si los metadatos contienen información suficiente para generar enlaces
+        """
+        try:
+            # Verificar documento
+            doc = metadata.get('documento', {})
+            if not doc.get('filename') or not doc.get('pagina_numero'):
+                return False
+            
+            # Verificar coordenadas
+            pos = metadata.get('posicion', {})
+            required_coords = ['x', 'y', 'width', 'height']
+            
+            if not all(coord in pos for coord in required_coords):
+                return False
+            
+            # Verificar que las coordenadas sean válidas
+            for coord in required_coords:
+                if not isinstance(pos[coord], (int, float)) or pos[coord] < 0:
+                    return False
+            
+            return True
+            
+        except Exception:
+            return False
+
+    # MANTENER TU MÉTODO ORIGINAL como fallback
     async def _procesar_chunks(self, resultado_manual: Dict[str, Any]) -> str:
+        """
+        Tu método original (mantenido para compatibilidad)
+        """
         chunks_list = []
         for item in resultado_manual['results']:
             chunks = await self.knowledge_base.get_chunk_with_context(item['chunk_id'])
@@ -241,5 +382,99 @@ class OrquestadorBusquedaNode:
             f"[{i+1}] (chunk_id {c['chunk_id']})\npágina {c['page']})\n{c['text']}"
             for i, c in enumerate(chunks_list)
         )
-    
+#------------------------
+
+    def _verificar_estructura_item(self, item: Dict[str, Any]) -> bool:
+        """
+        Verifica si un item tiene la estructura necesaria para generar enlaces con resaltado
+        """
+        try:
+            # Verificar campos básicos requeridos
+            if 'chunk_id' not in item:
+                return False
+            
+            # Verificar documento
+            if 'documento' not in item:
+                return False
+            
+            doc = item['documento']
+            if not isinstance(doc, dict):
+                return False
+                
+            required_doc_fields = ['filename', 'pagina_numero']
+            if not all(field in doc for field in required_doc_fields):
+                return False
+            
+            # Verificar coordenadas (lo más importante para el resaltado)
+            if 'posicion' not in item:
+                return False
+            
+            pos = item['posicion']
+            if not isinstance(pos, dict):
+                return False
+                
+            required_coords = ['x', 'y', 'width', 'height']
+            if not all(coord in pos for coord in required_coords):
+                return False
+            
+            # Verificar que las coordenadas sean números válidos
+            for coord in required_coords:
+                if not isinstance(pos[coord], (int, float)) or pos[coord] < 0:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.debug(f"Error verificando estructura item: {e}")
+            return False
+
+    # 4. AGREGAR MÉTODO PARA FORMATO CON ENLACES:
+    def _format_chunks_con_enlaces(self, chunks_list: List[Dict[str, Any]]) -> str:
+        """
+        Formatea chunks incluyendo enlaces de resaltado cuando están disponibles
+        """
+        if not chunks_list:
+            return "No se encontraron chunks relevantes."
+        
+        formatted_parts = []
+        
+        for i, chunk in enumerate(chunks_list, 1):
+            # Iniciar con tu formato base
+            parte_chunk = f"[{i}] (chunk_id {chunk['chunk_id']})\npágina {chunk['page']})\n"
+            
+            # AGREGAR enlaces si están disponibles
+            if chunk.get('enlaces') and not chunk['enlaces'].get('error'):
+                enlaces_section = f"""
+🔗 **Enlaces directos:**
+• 📄 [Abrir PDF página {chunk['page']}]({chunk['enlaces']['pdf_link']})
+• 🖥️ [Ver con resaltado automático]({chunk['enlaces']['web_viewer_link']})
+
+"""
+                parte_chunk += enlaces_section
+            
+            # Agregar el texto (tu formato existente)
+            parte_chunk += chunk['text']
+            
+            # OPCIONAL: Información adicional si está disponible
+            if chunk.get('similarity', 0) > 0:
+                parte_chunk += f"\n\n📊 **Relevancia:** {chunk['similarity']:.1%}"
+            
+            if chunk.get('equipo') and chunk['equipo'].get('marca'):
+                equipo_info = f" | **Equipo:** {chunk['equipo'].get('marca', '')} {chunk['equipo'].get('modelo', '')}"
+                parte_chunk += equipo_info
+            
+            formatted_parts.append(parte_chunk)
+        
+        return "\n\n".join(formatted_parts)
+
+    # 5. AGREGAR MÉTODO FALLBACK (tu formato original):
+    def _format_chunks_original(self, chunks_list: List[Dict[str, Any]]) -> str:
+        """
+        Tu formato original para compatibilidad hacia atrás
+        """
+        return "\n\n".join(
+            f"[{i+1}] (chunk_id {c['chunk_id']})\npágina {c['page']})\n{c['text']}"
+            for i, c in enumerate(chunks_list)
+        )
+
  

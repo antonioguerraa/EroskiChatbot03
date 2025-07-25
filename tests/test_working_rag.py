@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
 
 # Usar solo el RAG básico que funciona
-from nodes.buscar_solucion_node import EroskiKnowledgeBase
+from src.nodes.buscar_solucion_node import EroskiKnowledgeBase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

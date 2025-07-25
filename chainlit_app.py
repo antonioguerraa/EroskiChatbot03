@@ -24,9 +24,9 @@ from models.eroski_state import create_initial_eroski_state, EroskiState
 from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_manual_node import recoger_datos_empleado_node
 from nodes.identificacion_incidencia_node import identificacion_node
-from nodes.buscar_solucion_node import buscar_solucion_node
+from src.nodes.buscar_solucion_node import buscar_solucion_node
 from nodes.supervisor_node import supervisor_node
-from nodes.finalize_node import finalize_node
+from src.nodes.finalize_node import finalize_node
 from nodes.incident_info_adicional_node import recoger_datos_adicionales_node
 from langgraph.graph import StateGraph, END
 
@@ -46,115 +46,10 @@ class EroskiChatbot:
     def __init__(self):
         """Inicializar el chatbot"""
         self.graph = self._build_graph()
-        self.session_counter = 0
+        
         logger.info("🤖 Chatbot Eroski inicializado")
     
-    def _build_graph_kk(self):
-        """Construir el grafo igual que en test_identificador_grafo_interactivo.py"""
-        builder = StateGraph(EroskiState)
-        
-        # Añadir nodos exactamente como en tu test
-        builder.add_node("orquestador", identificador_orquestador_node)
-        builder.add_node("identificador_manual", recoger_datos_empleado_node)
-        builder.add_node("identificar_incidencia", identificacion_node)
-        builder.add_node("buscar_solucion", buscar_solucion_node)
-        builder.add_node("supervisor_node", supervisor_node)
-        builder.add_node("resolucion_exitosa", finalize_node)
-        builder.add_node("info_adicional_incidencia", recoger_datos_adicionales_node)
-        
-        builder.set_entry_point("orquestador")
 
-        # Función de enrutamiento desde orquestador (copiada de tu test)
-        def route_from_orquestador(state: EroskiState):
-            if state.get("authenticated"):
-                return "identificar_incidencia"
-            if (state.get("email_authen_tried", False) and 
-                state.get("employee_id_authent_tried", False)):
-                return "identificador_manual"
-            return "identificar_incidencia"  # Por defecto ir a identificar incidencia
-
-        def route_from_identificacion(state: EroskiState):
-            if state.get("incident_identified"):
-                return "buscar_solucion"
-            elif state.get("need_additional_info"):
-                return "info_adicional_incidencia"
-            else:
-                return END  # ← FIX: Terminar en lugar de bucle infinito
-
-        def route_from_solucion(state: EroskiState):
-            if state.get("solution_found"):
-                return "resolucion_exitosa"
-            elif state.get("escalation_needed"):
-                return "supervisor_node"
-            else:
-                return END  # ← FIX: Terminar si no hay solución
-
-        def route_from_supervisor(state: EroskiState):
-            if state.get("supervisor_resolved"):
-                return "resolucion_exitosa"
-            else:
-                return END
-
-        def route_from_info_adicional(state: EroskiState):
-            if state.get("additional_info_collected"):
-                return "identificar_incidencia"
-            else:
-                return END  # ← FIX: Terminar si no se puede recoger info
-
-        # Rutas condicionales desde orquestador
-        builder.add_conditional_edges(
-            "orquestador",
-            route_from_orquestador,
-            {
-                "identificador_manual": "identificador_manual",
-                "identificar_incidencia": "identificar_incidencia"
-            }
-        )
-        
-        builder.add_conditional_edges(
-            "identificar_incidencia",
-            route_from_identificacion,
-            {
-                "buscar_solucion": "buscar_solucion",
-                "info_adicional_incidencia": "info_adicional_incidencia",
-                END: END
-            }
-        )
-        
-        builder.add_conditional_edges(
-            "buscar_solucion",
-            route_from_solucion,
-            {
-                "resolucion_exitosa": "resolucion_exitosa",
-                "supervisor_node": "supervisor_node",
-                END: END
-            }
-        )
-        
-        builder.add_conditional_edges(
-            "supervisor_node",
-            route_from_supervisor,
-            {
-                "resolucion_exitosa": "resolucion_exitosa",
-                END: END
-            }
-        )
-        
-        builder.add_conditional_edges(
-            "info_adicional_incidencia",
-            route_from_info_adicional,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
-        
-        # Rutas directas
-        builder.add_edge("identificador_manual", "identificar_incidencia")
-        builder.add_edge("resolucion_exitosa", END)
-        
-        return builder.compile(checkpointer=None, interrupt_before=None, interrupt_after=None, debug=False)
-    
     def _build_graph(self):
         builder = StateGraph(EroskiState)
         builder.add_node("orquestador", identificador_orquestador_node)
