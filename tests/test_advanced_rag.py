@@ -40,7 +40,7 @@ except ImportError as e:
 
 # Fallback al RAG básico
 try:
-    from src.nodes.buscar_solucion_node import EroskiKnowledgeBase
+    from nodes.buscar_solucion_node import EroskiKnowledgeBase
     BASIC_RAG_AVAILABLE = True
 except ImportError:
     BASIC_RAG_AVAILABLE = False

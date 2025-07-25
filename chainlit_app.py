@@ -24,9 +24,9 @@ from models.eroski_state import create_initial_eroski_state, EroskiState
 from nodes.identificador_orquestador import identificador_orquestador_node
 from nodes.identificador_manual_node import recoger_datos_empleado_node
 from nodes.identificacion_incidencia_node import identificacion_node
-from src.nodes.buscar_solucion_node import buscar_solucion_node
+from nodes.buscar_solucion_node import buscar_solucion_node
 from nodes.supervisor_node import supervisor_node
-from src.nodes.finalize_node import finalize_node
+from nodes.finalize_node import finalize_node
 from nodes.incident_info_adicional_node import recoger_datos_adicionales_node
 from langgraph.graph import StateGraph, END
 

@@ -10,7 +10,7 @@ from models.eroski_state import EroskiState
 from models.ordenar_chunks import OrdenarChunks
 from utils.llm.providers import get_llm
 from nodes.improved_eroski_knowledge_base import OptimizedEroskiKnowledgeBaseWithMetadata
-from src.nodes.buscar_solucion_node import BuscarSolucionNode
+from nodes.buscar_solucion_node import BuscarSolucionNode
 from utils.cargar_incidentes import EroskiIncidentsManager
 from utils.construir_historico_mensajes import format_full_chat_history
 from langchain_core.output_parsers import JsonOutputParser

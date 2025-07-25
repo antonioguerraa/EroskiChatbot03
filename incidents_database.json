@@ -142,5 +142,42 @@
     "solution_content": null,
     "escalation_needed": false,
     "escalation_reason": null
+  },
+  "ER-6639": {
+    "codigo_incidencia": "ER-6639",
+    "timestamp_creacion": "2025-07-25T13:39:02.690888",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea saber cómo realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-25T13:39:04.303638"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-25T13:39:04.303638"
+      }
+    ],
+    "session_id": "test_session_1_20250725_133854",
+    "timestamp_actualizacion": "2025-07-25T13:39:04.303638",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
   }
 }

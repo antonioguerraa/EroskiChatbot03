@@ -1,5 +1,5 @@
 
 
-from src.nodes.buscar_solucion_node import EroskiKnowledgeBase
+from nodes.buscar_solucion_node import EroskiKnowledgeBase
 
 baseconocimeinto = EroskiKnowledgeBase()
