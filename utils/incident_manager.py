@@ -178,19 +178,19 @@ class IncidentManager:
             "nombre_tienda": self._extract_store_name(state),
             "seccion": self._extract_department(state),
             #"numero_empleado": state.get("employee_id", ""),
-            "empleado_autenticado": state.get("authenticated", False),
+            "authenticated": state.get("authenticated", False),
             
             # Datos de incidencia (desde identificacion_incidencia)
-            "tipo_incidencia": state.get("incident_type"),
-            "informacion_adicional":state.get("incident_info_adicional"),
-            "descripcion_problema": state.get("incident_description"),
-            "problema_especifico": state.get("problem_description"),
+            "incident_type": state.get("incident_type"),
+            "incident_info_adicional":state.get("incident_info_adicional"),
+            "incident_description": state.get("incident_description"),
+            "problem_description": [state.get("problem_description")] if state.get("problem_description") else [],
             #"confianza_identificacion": state.get("identification_confidence"),
             #"fuente_identificacion": state.get("identification_source"),
             #"detalles_adicionales": state.get("incident_details", {}),
             
             # Estado inicial de solución
-            "solucion_encontrada": False,
+            "solution_found": False,
             #"tipo_solucion": None,
             "contenido_solucion": None,
             "escalacion_necesaria": False,
@@ -220,21 +220,43 @@ class IncidentManager:
     # =========================================================================
     # ACTUALIZACIÓN DE PROGRESO DE SOLUCIÓN
     # =========================================================================
-    
+    def _get_existing_problem_descriptions(self, incident_id: str) -> List[str]:
+        """Obtener lista existente de problem_description"""
+        incident = self.get_incident(incident_id)
+        if not incident:
+            return []
+        
+        existing = incident.get("problem_description", [])
+        if isinstance(existing, str):
+            return [existing]
+        elif isinstance(existing, list):
+            return existing
+        else:
+            return []
+
     def _update_solution_progress(self, incident_id: str, state: EroskiState):
         """Actualizar progreso de búsqueda/aplicación de solución"""
         updates = {
-            "informacion_adicional":state.get("incident_info_adicional"),
-            "descripcion_problema": state.get("incident_description"),
-            "problema_especifico": state.get("problem_description"),
-            "solucion_encontrada": state.get("solution_found", False),
-            "tipo_solucion": state.get("solution_type"),
-            "contenido_solucion": state.get("solution_content"),
-            "escalacion_necesaria": state.get("escalation_needed", False),
-            "razon_escalacion": state.get("escalation_reason"),
+            "incident_info_adicional":state.get("incident_info_adicional"),
+            "incident_description": state.get("incident_description"),
+            "solution_found": state.get("solution_found", False),
+            "solution_type": state.get("solution_type"),
+            "solution_content": state.get("solution_content"),
+            "escalation_needed": state.get("escalation_needed", False),
+            "escalation_reason": state.get("escalation_reason"),
             "conversacion": self._extract_messages(state),
             "timestamp_actualizacion": datetime.now().isoformat()
         }
+# Recuperar valor actual
+        existing = self._get_existing_problem_descriptions(incident_id)
+
+        # Nuevo valor desde el estado
+        new_description = state.get("problem_description")
+        if new_description and new_description not in existing:
+            existing.append(new_description)
+
+        updates["problem_description"] = existing
+
         
         # Actualizar estado según progreso
         if state.get("solution_found"):

@@ -2274,7 +2274,7 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             )
 
 
-            print(f" 👹 resultado: {resultado}")
+            #print(f" 👹 resultado: {resultado}")
             return resultado
         except Exception as e:
             logger.warning(f"Fallback a búsqueda estándar: {e}")

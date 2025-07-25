@@ -126,17 +126,20 @@ class InteractiveGrafoTester:
             )
 
         def ruta_post_buscar_solucion(state: dict) -> str:
-            import pprint
-            logging.info(f"📊 Estado completo en transición:\n{pprint.pformat(state)}")
-            logging.info(f"👹 ruta_post_buscar_solucion. problem_identified: {state.get('problem_identified')}")
-            logging.info(f"📥 Estado recibido en orquestador_busqueda: {state}")
+            logging.info("👹Entra en el enrutador buscar_solucion")
+            #logging.info(f"📊 Estado completo en transición:\n{pprint.pformat(state)}")
+            #logging.info(f"👹 ruta_post_buscar_solucion. problem_identified: {state.get('problem_identified')}")
+            #logging.info(f"📥 Estado recibido en orquestador_busqueda: {state}")
+            if state.get("solution_found"):
+                logging.info(f"👹 enrutador solution_found: {state.get('solution_found')}")
+                return "resolucion_exitosa"
             if state.get("problem_identified"):
                 logging.info(f"👹 problem_identified true: {state.get('problem_identified')}\nVa al nodo orquestador_busqueda")
                 return "orquestador_busqueda"
             if state.get("escalation_needed"):
+                logging.info(f"👹 enrutador escalation_needed: {state.get('escalation_needed')}")
                 return "supervisor_node"
-            if state.get("solution_found"):
-                return "resolucion_exitosa"
+            logging.info("👹 enrutador END")
             return END
         
         builder.add_conditional_edges(

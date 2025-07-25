@@ -158,9 +158,13 @@ class BuscarSolucionNode:
                     result = await self.analizando_consulta_chain.ainvoke({
                         "incident_type": incident_type,
                         "chat_history": historial_formateado})
-                    logging.info(f"👹 identificacion_solucion_chain.ainvoke result: {result}")
                     logging.info(f"👹 intent: {result['user_intent']}")
+                    print("👹"*10)
                     pprint.pprint(result)
+                    print("👹"*10)
+                    base_update.update(result)
+                    print("👹 base_update")
+                    pprint.pprint(base_update)
                     if result['escalation_needed']:
                         return {
                             **base_update,
@@ -171,7 +175,15 @@ class BuscarSolucionNode:
                             "awaiting_user_input": False,
                             "problem_identified": False
                         }
-
+                    if result['solution_found']:
+                        return {
+                            **base_update,
+                            "messages": [
+                                AIMessage(content=result['message_to_user'])
+                            ],
+                            "awaiting_user_input": False,
+                            "solution_found": True
+                        }
                     if result['problem_identified']:
                         #Buscamos en el RAG
                         logging.info(f"👹 problem_identified: {result['problem_identified']}")
@@ -287,7 +299,8 @@ class BuscarSolucionNode:
             1. Lee con atención la consulta del usuario y **entiende su intención exacta**.
             2. Evalúa **si alguno de los fragmentos contiene instrucciones, explicaciones o información que respondan directamente** a la consulta.
             3. Si encuentras un fragmento útil, **extrae la información clave y genera una respuesta clara** para el usuario.
-            4. Si los fragmentos no responden directamente a la consulta, indica que no hay información suficiente.
+            4. Guarda en la lista "chunk_id_list" los identificadores de los fragmentos que responden a la consulta.
+            5. Si los fragmentos no responden directamente a la consulta, indica que no hay información suficiente.
 
             Devuelve un JSON válido con el siguiente formato:
 
@@ -296,6 +309,7 @@ class BuscarSolucionNode:
             "problem_identified": true/false,
             "confidence": 0.0 - 1.0,
             "solution_content": "texto generado para el usuario"
+            "chunk_id_list": ['chunk_000484', 'chunk_000136', ...]
             }}
 
             ⚠️ No inventes información. Si el fragmento más claro habla de un tema distinto al de la consulta, ignóralo.
@@ -331,7 +345,7 @@ class BuscarSolucionNode:
 
             1. Lee cuidadosamente el mensaje del usuario.
             2. Compara su contenido con los problemas disponibles (las claves del JSON).
-            3. Devuelve el problema más parecido en el campo `"problem_name"` y la solución asociada en `"solution_content"`.
+            3. Devuelve el problema más parecido en el campo "problem_name" y la solución asociada en "solution_content".
             4. Estima una confianza (entre 0.0 y 1.0).
             5. Si no hay ninguna coincidencia razonable (confianza < 0.4), responde con:
             {{
@@ -470,6 +484,7 @@ async def buscar_solucion_node(state: EroskiState) -> dict:
     # Crear instancia del nodo
     node = BuscarSolucionNode()
     result = await node.execute(state)
-    print(f"👹✅ RESULTADO DEL NODO buscar_solucion: {result}")
+    #print("👹✅ RESULTADO DEL NODO buscar_solucion:")
+    #pprint.pprint(result)
     return result
     # Ejecutar el nodo

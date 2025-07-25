@@ -1,4 +1,5 @@
 import json
+import pprint
 import logging
 from typing import Any, Dict, Optional, List
 from datetime import datetime
@@ -14,6 +15,7 @@ from utils.cargar_incidentes import EroskiIncidentsManager
 from utils.construir_historico_mensajes import format_full_chat_history
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
+from utils.incident_manager import get_incident_manager
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,8 @@ class OrquestadorBusquedaNode:
 
     async def execute(self, state: EroskiState) -> dict:
         print("👹👹👹 Entra en el orquestador de búsqueda 👹👹👹")
+        get_incident_manager().manage_incident(state)
+
         
         try:
             incident_type = state.get("incident_type")
@@ -146,17 +150,13 @@ class OrquestadorBusquedaNode:
             chat_history = format_full_chat_history(mensajes)
             logging.info(f"👹 chat_history: {chat_history}")
             logging.info(f"👹 mensajes: {mensajes}")
+
             base_update = {
                 "current_node": "orquestador_busqueda",
                 "last_activity": datetime.now()
             }
 
-            if not incident_type or not consulta:
-                return {
-                    **base_update,
-                    "messages": [AIMessage(content="Faltan datos para realizar la búsqueda.")],
-                    "awaiting_user_input": True
-                }
+
 
             # --- 1. Buscar en manual (RAG) ---
             top_k = 3
@@ -166,36 +166,34 @@ class OrquestadorBusquedaNode:
                 top_k=top_k,
                 return_formato="json"
             )
+            if resultado_manual['results']:
+                lista_chunk = await self._procesar_chunks(resultado_manual)
 
-            logging.info("👹 checkpoint 1")
-            lista_chunk = await self._procesar_chunks(resultado_manual)
+            #logging.info(f"👹 lista_chunk: {lista_chunk}")
 
-            logging.info(f"👹 lista_chunk: {lista_chunk}")
-
-            rag_result = await self.ordenar_chunks_chain.ainvoke({
-                "lista_chunks": lista_chunk,
-                "top_k": top_k,
-                "chat_history": chat_history
-            })
-            logging.info(f"👹 rag_result: {rag_result}")
+                rag_result = await self.ordenar_chunks_chain.ainvoke({
+                    "lista_chunks": lista_chunk,
+                    "top_k": top_k,
+                    "chat_history": chat_history
+                })
 
             # --- 2. Buscar en JSON (FAQ) ---
             problemas_dict = self.faq_tool.incidents_manager.get_problemas_soluciones(incident_type)
-            logging.info(f"👹 problemas_dict: {problemas_dict}")
 
             faq_result = await self.agent_faq.ainvoke({
                 "problema_identificado": consulta,
                 "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)
             })
 
-            logging.info("👹 checkpoint 3")
             # --- 3. Fusionar resultados ---
             mensajes = []
-            if rag_result.get("problem_identified"):
+            if resultado_manual['results'] and rag_result.get("problem_identified"):
                 mensajes.append(f"📘 Manual:\n{rag_result['solution_content']}")
+            print("👹check 4")
             if faq_result.get("problem_identified"):
                 mensajes.append(f"📋 FAQ:\n{faq_result['solution_content']}")
 
+            print(f"👹check 5 mensajes: {mensajes}")
             if not mensajes:
                 msg = "Lo siento, no se encontró solución en el manual ni en las incidencias frecuentes. ¿Podrías darme más información?"
                 return {
@@ -211,8 +209,7 @@ class OrquestadorBusquedaNode:
                 **base_update,
                 "messages": [AIMessage(content=msg_IA)],
                 "awaiting_user_input": True,
-                "problem_identified": False,
-                "solution_found": True
+                "problem_identified": False
             }
 
         except Exception as e:
@@ -229,6 +226,7 @@ class OrquestadorBusquedaNode:
         for item in resultado_manual['results']:
             chunks = await self.knowledge_base.get_chunk_with_context(item['chunk_id'])
             chunks_list.append({
+                'chunk_id': item['chunk_id'],
                 'page': item['documento']['pagina_numero'],
                 'text': (
                     chunks['chunk_anterior']['chunk_text'] + "\n" +
@@ -238,7 +236,7 @@ class OrquestadorBusquedaNode:
             })
 
         return "\n\n".join(
-            f"[{i+1}] (página {c['page']})\n{c['text']}"
+            f"[{i+1}] (chunk_id {c['chunk_id']})\npágina {c['page']})\n{c['text']}"
             for i, c in enumerate(chunks_list)
         )
     
