@@ -16,7 +16,6 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 
-import psycopg2
 from psycopg2.extras import RealDictCursor
 import numpy as np
 from langchain.agents import create_react_agent, AgentExecutor
@@ -79,7 +78,7 @@ class FAQ_ProblemIdentificationTool:
         self.incidents_manager = incidents_manager
         
         # Configurar parser JSON robusto
-        self.parser = RobustJsonOutputParser(pydantic_object=ProblemIdentificationResult)
+        self.parser = JsonOutputParser(pydantic_object=ProblemIdentificationResult)
         
         # Configurar prompt con instrucciones JSON específicas
         self.prompt_template = PromptTemplate(
@@ -233,7 +232,6 @@ class BuscarSolucionNode:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.knowledge_base = EroskiKnowledgeBase()
         self.incidents_manager = EroskiIncidentsManager()
         self.faq_problem_tool = FAQ_ProblemIdentificationTool(self.incidents_manager)
         self._incident_manager = None
@@ -364,12 +362,17 @@ Responde únicamente con "si" o "no".
                     #Ha identificado el problema                    
                     if result['problem_identified']:
                         #Buscamos en el RAG
-                        logging.info(f"👹 problem_identified: {result['problem_identified']}")
 
                         solution_content_manual = self.knowledge_base.buscar_solucion_rag(result['problema'])
-                        logging.info(f"👹 solucion manual rag: {solution_content_manual}")
+                        logging.info(f"👹self.incidents_manager.__class__ {self.incidents_manager.__class__}")
+                        logging.info(f"👹dir(self.incidents_manager): {dir(self.incidents_manager)}")
+                        
+                        
+                        print(f"👹dir(self.incidents_manager): {dir(self.incidents_manager)}")
+                        print(f"👹self.incidents_manager.__class__ {self.incidents_manager.__class__}")
                         #Empezamos a buscar en el json. Primero lo cargamo
                         problemas_dict = self.incidents_manager.get_problemas_soluciones(incident_type)
+                        
                         agent_response_faq = self.agent_faq.invoke({
                                                             "problema_identificado": result['problema'],
                                                             "problemas_json": json.dumps(problemas_dict, indent=2, ensure_ascii=False)})

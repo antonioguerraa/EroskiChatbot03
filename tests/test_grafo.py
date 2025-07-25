@@ -22,6 +22,7 @@ from nodes.buscar_solucion_node import buscar_solucion_node
 from nodes.supervisor_node import supervisor_node
 from nodes.finalize_node import finalize_node
 from nodes.incident_info_adicional_node import recoger_datos_adicionales_node
+from nodes.orquestador_busqueda_node import orquestador_busqueda_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
 import logging
@@ -43,27 +44,31 @@ class InteractiveGrafoTester:
         builder.add_node("identificador_manual", recoger_datos_empleado_node)
         builder.add_node("identificar_incidencia", identificacion_node)
         builder.add_node("buscar_solucion", buscar_solucion_node)
+        
 
         builder.add_node("supervisor_node", supervisor_node)
         builder.add_node("resolucion_exitosa", finalize_node)
         builder.add_node("info_adicional_incidencia", recoger_datos_adicionales_node)
-        
+        builder.add_node("orquestador_busqueda", orquestador_busqueda_node)
+        builder.add_edge("orquestador_busqueda", END)
+
         builder.set_entry_point("orquestador")
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
             print(f"👹 incident_info_adicional_completa: {state.get('incident_info_adicional_completa')}")
             campos = [  
-                        "busqueda_manual",
-                        "busqueda_faq",
-                        "incident_id",
+                        "problem_identified",
+                        #"busqueda_manual",
+                        #"busqueda_faq",
+                        #"incident_id",
                         #"incident_department",
                         #"authenticated",
                         #"email_authen_tried",
                         #"employee_id_authent_tried",
-                        "incident_found", 
-                        "incident_type",
-                        "incident_info_adicional",
+                        #"incident_found", 
+                        #"incident_type",
+                        #"incident_info_adicional",
                         "incident_type_confirmed",
                         "escalation_needed:", 
                         "awaiting_user_input", 
@@ -71,9 +76,9 @@ class InteractiveGrafoTester:
                         "automated_resolution",
                         "incident_id",
                         "awaiting_user_input",
-                        "current_node",
+                        #"current_node",
                         "identification_source",
-                        "pending_confirmation"
+                        #"pending_confirmation"
                       ]
             for campo in campos:
                 print(f"🎛️ {campo}: {state.get(campo)}")
@@ -96,46 +101,7 @@ class InteractiveGrafoTester:
             logging.info("👹 Entra en buscar solución")
             return "buscar_solucion"
 
-        """
-        def ruta_post_identificacion_db(state: EroskiState) -> str:
-            if state.get("authenticated"):
-                return "identificar_incidencia"
-            else:
-                return END
 
-        builder.add_conditional_edges(
-            "identificador_base_de_datos",
-            ruta_post_identificacion_db,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
-
-        def ruta_post_identificacion_manual(state: EroskiState) -> str:
-            return "identificar_incidencia" if state.get("authenticated") else END
-        
-        builder.add_conditional_edges(
-            "identificador_manual",
-            ruta_post_identificacion_manual,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
-        def ruta_post_identificar_incidencia(state: EroskiState) -> str:
-            return 'buscar_solucion' if state.get('incident_type_confirmed') else END
-
-        builder.add_conditional_edges(
-            'identificar_incidencia',
-            
-            ruta_post_identificar_incidencia,
-            {
-                'buscar_solucion': 'buscar_solucion',
-                END: END
-            }
-        )
-        """
         
         builder.add_conditional_edges(
             "info_adicional_incidencia",
@@ -159,18 +125,31 @@ class InteractiveGrafoTester:
                 )
             )
 
-        builder.add_edge("buscar_solucion", END)
-
+        def ruta_post_buscar_solucion(state: dict) -> str:
+            import pprint
+            logging.info(f"📊 Estado completo en transición:\n{pprint.pformat(state)}")
+            logging.info(f"👹 ruta_post_buscar_solucion. problem_identified: {state.get('problem_identified')}")
+            logging.info(f"📥 Estado recibido en orquestador_busqueda: {state}")
+            if state.get("problem_identified"):
+                logging.info(f"👹 problem_identified true: {state.get('problem_identified')}\nVa al nodo orquestador_busqueda")
+                return "orquestador_busqueda"
+            if state.get("escalation_needed"):
+                return "supervisor_node"
+            if state.get("solution_found"):
+                return "resolucion_exitosa"
+            return END
+        
         builder.add_conditional_edges(
             "buscar_solucion",
-            lambda state: "buscar_solucion" if state.get("extra_info_provided") 
-                else ("supervisor_node" if state.get("escalation_needed") 
-                else ("resolucion_exitosa" if state.get("solution_found") 
-                else END
-                )
-            )
+            ruta_post_buscar_solucion,
+            {
+                "orquestador_busqueda": "orquestador_busqueda",
+                "supervisor_node": "supervisor_node",
+                "resolucion_exitosa": "resolucion_exitosa",
+                END: END
+            }
         )
-
+        
         builder.add_conditional_edges("orquestador", route, {
             #"identificador_base_de_datos": "identificador_base_de_datos",
             "identificador_manual": "identificador_manual",

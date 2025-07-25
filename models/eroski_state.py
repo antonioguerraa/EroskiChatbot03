@@ -234,7 +234,7 @@ def create_initial_eroski_state(
     return EroskiState(
         max_intentos_identificacion = 10, # Número máximo de intentos para identificar al usuario
         intento_identificacion = 0,     # Número de intentos para identificar al usuario
-        #incident_info_adicional_completa = True,
+        incident_info_adicional_completa = True,
         intento_tienda = 0,
         max_intento_tienda = 2,
         max_solution_attempts=4,
