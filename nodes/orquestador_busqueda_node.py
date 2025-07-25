@@ -177,6 +177,8 @@ class OrquestadorBusquedaNode:
                     "chat_history": chat_history
                 })
 
+                chunck_list = rag_result.get("chunk_id_list", [])
+
             # --- 2. Buscar en JSON (FAQ) ---
             problemas_dict = self.faq_tool.incidents_manager.get_problemas_soluciones(incident_type)
 
