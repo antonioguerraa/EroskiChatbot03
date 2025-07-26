@@ -1,0 +1,1224 @@
+# =====================================================
+# nodes/identificacion_node.py - Nodo de Identificación de Incidencias
+# =====================================================
+"""
+Nodo conversacional para identificar el tipo de incidencia técnica usando LangGraph.
+
+RESPONSABILIDADES:
+- Mostrar ejemplos representativos de tipos comunes al inicio
+- Usar recuperación semántica desde BD PostgreSQL con embeddings precomputados
+- Implementar agente React con Tool de identificación
+- Confirmar tipo de incidencia con el usuario
+- Actualizar estado EroskiState con el tipo identificado
+
+CARACTERÍSTICAS:
+- Usa get_vectorizer() del proyecto para consistencia
+- LangChain BaseRetriever para búsqueda vectorial
+- Agente React con Tool personalizada
+- Confirmación inteligente usando ConfirmationTool
+- Manejo de estado robusto
+- Logging detallado para debugging
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
+import asyncio
+import logging
+
+import psycopg2
+import psycopg2.extras
+
+# LangChain imports
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import BaseMessage
+from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from pydantic import BaseModel, Field
+from pydantic import PrivateAttr
+from langchain_core.output_parsers import JsonOutputParser
+from app.utils.construir_historico_mensajes import format_full_chat_history
+
+# LangGraph imports
+from langgraph.types import Command
+from langchain_core.runnables import RunnableSequence
+
+# Project imports
+from app.models.eroski_state import EroskiState
+from app.nodes.base_node import BaseNode
+from app.utils.llm.providers import get_llm, get_vectorizer
+from config.settings import get_settings
+
+from app.models.incident_response import IncidentResponse
+from app.models.identificar_incidencia import IdentificarIncidencia
+
+parser = PydanticOutputParser(pydantic_object=IncidentResponse)
+
+
+# Importar tool de confirmación
+try:
+    from app.nodes.tools.confirmation_tool import ConfirmationTool
+    CONFIRMATION_AVAILABLE = True
+except ImportError:
+    CONFIRMATION_AVAILABLE = False
+    ConfirmationTool = None
+
+# =============================================================================
+# MODELOS PYDANTIC PARA STRUCTURED OUTPUT
+# =============================================================================
+
+class IncidentIdentification(BaseModel):
+    """Modelo para la respuesta de identificación de incidencia"""
+    incident_type: str = Field(description="Tipo de incidencia identificado (balanza, tpv, impresoras, etc.)")
+    confidence: float = Field(description="Nivel de confianza de 0.0 a 1.0")
+    keywords: List[str] = Field(description="Palabras clave que llevaron a la identificación")
+    reasoning: str = Field(description="Explicación del razonamiento")
+    problem_description: Optional[str] = Field(description="Descripción específica del problema si se detecta")
+
+# =============================================================================
+# RETRIEVER PERSONALIZADO PARA TIPOS DE INCIDENCIA CON BD
+# =============================================================================
+
+class EroskiIncidentRetriever(BaseRetriever):
+    """
+    Retriever personalizado para tipos de incidencia usando LangChain BaseRetriever.
+    
+    Usa get_vectorizer() del proyecto y base de datos PostgreSQL para búsqueda semántica.
+    """
+    _incidents_data: Dict[str, Any] = PrivateAttr()
+    _vectorizer = PrivateAttr()
+    _db_config = PrivateAttr()
+    
+    def __init__(self, incidents_data: Dict[str, Any], **kwargs):
+        super().__init__(**kwargs)
+        print("👹👹entra en EroskiIncidentRetriever ")
+        self._incidents_data = incidents_data
+        self._vectorizer = None
+        self._db_config = None
+        self._setup_retriever()
+    
+    def _setup_retriever(self):
+        """Configurar vectorizer y conexión a BD"""
+        try:
+            # Usar get_vectorizer del proyecto (mismo que se usó para generar embeddings)
+            self._vectorizer = get_vectorizer()
+            
+            # Configurar parámetros de BD
+            settings = get_settings()
+
+            self._db_config = {
+                'host': settings.database.host,
+                'port': settings.database.port,
+                'database': settings.database.name,  # 'dbname' para psycopg2
+                'user': settings.database.user,
+                'password': settings.database.password
+            }
+            
+            logging.info("✅ EroskiIncidentRetriever configurado con get_vectorizer()")
+            
+        except Exception as e:
+            logging.error(f"❌ Error configurando EroskiIncidentRetriever: {e}")
+            self._vectorizer = None
+            self._db_config = None
+    
+    def _get_relevant_documents(
+        self, 
+        query: str, 
+        *, 
+        run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        """
+        Implementación requerida por BaseRetriever.
+        Busca documentos relevantes usando embeddings de BD.
+        """
+        try:
+            # Generar embedding usando el mismo vectorizer que se usó para BD
+            if not self._vectorizer or not self._db_config:
+                return self._fallback_documents(query)
+            
+            # Usar get_vectorizer() para generar embedding de la query
+            query_embedding = self._vectorizer.embed(query)
+            
+            # Buscar similares en BD (versión síncrona para compatibility con BaseRetriever)
+            similar_results = self._search_similar_sync(query_embedding, query, k=5)
+            
+            # Convertir resultados a Documents de LangChain
+            documents = []
+            for result in similar_results:
+                # Enriquecer con información del JSON local
+                incident_type = result['tipo_incidencia']
+                similarity = result['similarity']
+                
+                # Crear contenido del documento
+                if incident_type in self._incidents_data:
+                    incident_data = self._incidents_data[incident_type]
+                    
+                    # Agregar problemas específicos si existen
+                    problems_text = ""
+                    if 'problemas' in incident_data:
+                        problems_list = [f"- {prob}: {sol}" for prob, sol in incident_data['problemas'].items()]
+                        problems_text = f"\n\nProblemas específicos:\n" + "\n".join(problems_list[:3])  # Máximo 3
+                    
+                    content = f"""Tipo: {incident_type}
+Descripción: {incident_data.get('description', result.get('descripcion', ''))}
+Keywords: {', '.join(incident_data.get('keywords', []))}
+Urgencia: {incident_data.get('urgency_level', 'N/A')}
+Tiempo estimado: {incident_data.get('estimated_resolution_minutes', 'N/A')} min{problems_text}"""
+                
+                else:
+                    content = f"""Tipo: {incident_type}
+Descripción: {result.get('descripcion', 'Sin descripción')}"""
+                
+                # Crear Document de LangChain
+                doc = Document(
+                    page_content=content,
+                    metadata={
+                        'incident_type': incident_type,
+                        'similarity': similarity,
+                        'source': 'database_embeddings',
+                        'description': result.get('descripcion', ''),
+                        'keywords': incident_data.get('keywords', []) if incident_type in self._incidents_data else []
+                    }
+                )
+                
+                documents.append(doc)
+            
+            logging.info(f"✅ Retriever: Encontrados {len(documents)} documentos relevantes")
+            return documents
+            
+        except Exception as e:
+            logging.error(f"❌ Error en _get_relevant_documents: {e}")
+            return self._fallback_documents(query)
+    
+
+    
+    
+    def _search_similar_sync(self, query_embedding: List[float], query_text: str, k: int = 5) -> List[Dict[str, Any]]:
+        """Búsqueda síncrona usando psycopg2"""
+        try:
+            # Conectar con psycopg2 (SIN LOOPS)
+            conn = psycopg2.connect(**self._db_config)
+            conn.autocommit = True
+            
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    if self._check_pgvector_available_sync(cur):
+                        return self._search_with_pgvector_sync(cur, query_embedding, k)
+                    return self._search_with_python_similarity_sync(cur, query_embedding, k)
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logging.error(f"❌ Error en búsqueda síncrona: {e}")
+            return self._search_by_text_fallback_sync(query_text, k)
+            
+        return []
+
+
+
+    def _check_pgvector_available_sync(self, cursor) -> bool:
+        """Verificar pgvector síncrono"""
+        try:
+            cursor.execute("SELECT '[1,2,3]'::vector(3)")
+            return True
+        except:
+            return False
+
+
+
+    def _search_with_pgvector_sync(self, cursor, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Búsqueda con pgvector síncrono"""
+        try:
+            embedding_str = f"[{','.join(map(str, query_embedding))}]"
+            
+            query = """
+            SELECT 
+                tv.tipo_incidencia,
+                ti.descripcion,
+                1 - (tv.embedding <=> %s::vector) as similarity
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            ORDER BY tv.embedding <=> %s::vector
+            LIMIT %s
+            """
+            
+            cursor.execute(query, (embedding_str, embedding_str, k))
+            rows = cursor.fetchall()
+            
+            return [{
+                'tipo_incidencia': row['tipo_incidencia'],
+                'descripcion': row['descripcion'],
+                'similarity': float(row['similarity'])
+            } for row in rows]
+            
+        except Exception as e:
+            logging.error(f"❌ Error con pgvector síncrono: {e}")
+            return []
+
+
+    def _search_with_python_similarity_sync(self, cursor, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Similitud calculada en Python síncrono"""
+        try:
+            query = """
+            SELECT tv.tipo_incidencia, tv.embedding, ti.descripcion
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            """
+            
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            
+            similarities = []
+            for row in rows:
+                db_embedding = self._parse_embedding_from_db(row['embedding'])
+                
+                if db_embedding:
+                    similarity = self._cosine_similarity(query_embedding, db_embedding)
+                    similarities.append({
+                        'tipo_incidencia': row['tipo_incidencia'],
+                        'descripcion': row['descripcion'],
+                        'similarity': similarity
+                    })
+            
+            similarities.sort(key=lambda x: x['similarity'], reverse=True)
+            return similarities[:k]
+            
+        except Exception as e:
+            logging.error(f"❌ Error en cálculo Python síncrono: {e}")
+            return []
+
+
+    def _search_by_text_fallback_sync(self, query_text: str, k: int) -> List[Dict[str, Any]]:
+        """Fallback por texto síncrono"""
+        try:
+            conn = psycopg2.connect(**self._db_config)
+            conn.autocommit = True
+            
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    query = """
+                    SELECT 
+                        tv.tipo_incidencia,
+                        ti.descripcion,
+                        CASE 
+                            WHEN tv.tipo_incidencia ILIKE %s THEN 0.9
+                            WHEN ti.descripcion ILIKE %s THEN 0.7
+                            ELSE 0.3
+                        END AS similarity
+                    FROM tipo_incidencia_vectorizado tv
+                    JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+                    WHERE tv.tipo_incidencia ILIKE %s OR ti.descripcion ILIKE %s
+                    ORDER BY similarity DESC
+                    LIMIT %s
+                    """
+                    
+                    search_pattern = f"%{query_text.lower()}%"
+                    cur.execute(query, (search_pattern, search_pattern, search_pattern, search_pattern, k))
+                    rows = cur.fetchall()
+                    
+                    return [{
+                        'tipo_incidencia': row['tipo_incidencia'],
+                        'descripcion': row['descripcion'],
+                        'similarity': float(row['similarity'])
+                    } for row in rows]
+                    
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            logging.error(f"❌ Error en fallback texto síncrono: {e}")
+            return []
+    
+    
+    async def _search_with_pgvector(self, conn, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Búsqueda con pgvector"""
+        try:
+            embedding_str = f"[{','.join(map(str, query_embedding))}]"
+            
+            query = """
+            SELECT 
+                tv.tipo_incidencia,
+                ti.descripcion,
+                1 - (tv.embedding <=> $1::vector) as similarity
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            ORDER BY tv.embedding <=> $1::vector
+            LIMIT $2
+            """
+            
+            rows = await conn.fetch(query, embedding_str, k)
+            
+            return [{
+                'tipo_incidencia': row['tipo_incidencia'],
+                'descripcion': row['descripcion'],
+                'similarity': float(row['similarity'])
+            } for row in rows]
+            
+        except Exception as e:
+            logging.error(f"❌ Error con pgvector: {e}")
+            return []
+    
+    async def _search_with_python_similarity(self, conn, query_embedding: List[float], k: int) -> List[Dict[str, Any]]:
+        """Similitud calculada en Python"""
+        try:
+            query = """
+            SELECT tv.tipo_incidencia, tv.embedding, ti.descripcion
+            FROM tipo_incidencia_vectorizado tv
+            JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+            """
+            
+            rows = await conn.fetch(query)
+            
+            similarities = []
+            for row in rows:
+                db_embedding = self._parse_embedding_from_db(row['embedding'])
+                
+                if db_embedding:
+                    similarity = self._cosine_similarity(query_embedding, db_embedding)
+                    similarities.append({
+                        'tipo_incidencia': row['tipo_incidencia'],
+                        'descripcion': row['descripcion'],
+                        'similarity': similarity
+                    })
+            
+            similarities.sort(key=lambda x: x['similarity'], reverse=True)
+            return similarities[:k]
+            
+        except Exception as e:
+            logging.error(f"❌ Error en cálculo Python: {e}")
+            return []
+    
+    async def _search_by_text_fallback(self, query_text: str, k: int) -> List[Dict[str, Any]]:
+        """Fallback por texto"""
+        import asyncpg
+        
+        try:
+            conn = await asyncpg.connect(**self._db_config)
+            
+            try:
+                query = """
+                SELECT 
+                    tv.tipo_incidencia,
+                    ti.descripcion,
+                    CASE 
+                        WHEN tv.tipo_incidencia ILIKE $1 THEN 0.9
+                        WHEN ti.descripcion ILIKE $1 THEN 0.7
+                        ELSE 0.3
+                    END AS similarity
+                FROM tipo_incidencia_vectorizado tv
+                JOIN tipo_incidencia ti ON tv.tipo_incidencia = ti.tipo_incidencia
+                WHERE tv.tipo_incidencia ILIKE $1 OR ti.descripcion ILIKE $1
+                ORDER BY similarity DESC
+                LIMIT $2
+                """
+                
+                search_pattern = f"%{query_text.lower()}%"
+                rows = await conn.fetch(query, search_pattern, k)
+                
+                return [{
+                    'tipo_incidencia': row['tipo_incidencia'],
+                    'descripcion': row['descripcion'],
+                    'similarity': float(row['similarity'])
+                } for row in rows]
+                
+            finally:
+                await conn.close()
+                
+        except Exception as e:
+            logging.error(f"❌ Error en fallback texto: {e}")
+            return []
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Similitud coseno"""
+        try:
+            import numpy as np
+            vec1, vec2 = np.array(vec1), np.array(vec2)
+            return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        except ImportError:
+            dot_product = sum(a * b for a, b in zip(vec1, vec2))
+            magnitude1 = sum(a * a for a in vec1) ** 0.5
+            magnitude2 = sum(b * b for b in vec2) ** 0.5
+            return dot_product / (magnitude1 * magnitude2) if magnitude1 and magnitude2 else 0
+    
+    def _parse_embedding_from_db(self, embedding_data) -> Optional[List[float]]:
+        """Parsear embedding desde BD"""
+        try:
+            if isinstance(embedding_data, str):
+                import json
+                return json.loads(embedding_data)
+            elif isinstance(embedding_data, list):
+                return [float(x) for x in embedding_data]
+            elif hasattr(embedding_data, 'tolist'):
+                return embedding_data.tolist()
+            else:
+                return None
+        except Exception as e:
+            logging.error(f"❌ Error parseando embedding: {e}")
+            return None
+    
+    def _fallback_documents(self, query: str) -> List[Document]:
+        """Documentos de fallback usando keywords del JSON"""
+        try:
+            query_lower = query.lower()
+            fallback_docs = []
+            
+            for incident_type, data in self._incidents_data.items():
+                keywords = data.get('keywords', [])
+                if any(kw.lower() in query_lower for kw in keywords):
+                    content = f"""Tipo: {incident_type}
+Descripción: {data.get('description', 'Sin descripción')}
+Keywords: {', '.join(keywords)}"""
+                    
+                    doc = Document(
+                        page_content=content,
+                        metadata={
+                            'incident_type': incident_type,
+                            'similarity': 0.5,  # Similarity moderada para fallback
+                            'source': 'fallback_keywords',
+                            'keywords': keywords
+                        }
+                    )
+                    fallback_docs.append(doc)
+            
+            return fallback_docs[:3]  # Máximo 3 documentos de fallback
+            
+        except Exception as e:
+            logging.error(f"❌ Error en fallback documents: {e}")
+            return []
+
+# =============================================================================
+# TOOL DE IDENTIFICACIÓN DE INCIDENCIAS
+# =============================================================================
+
+class IdentifyIncidentTool:
+    """Tool para identificar tipo de incidencia usando LLM y LangChain Retriever"""
+    
+    def __init__(self, incidents_data: Dict[str, Any], llm, retriever: EroskiIncidentRetriever):
+        self._incidents_data = incidents_data
+        self.llm = llm
+        self.retriever = retriever  # Usa BaseRetriever de LangChain
+        self.parser = PydanticOutputParser(pydantic_object=IncidentIdentification)
+        
+        # Crear prompt para identificación usando Documents del Retriever
+        self.identification_prompt = ChatPromptTemplate.from_messages([
+            ("system", """Eres un especialista en identificación de incidencias técnicas para Eroski.
+
+Tu misión es analizar el mensaje del usuario y identificar el tipo de incidencia técnica.
+
+DOCUMENTOS RELEVANTES ENCONTRADOS (desde Retriever con BD):
+{relevant_documents}
+
+REGLAS DE IDENTIFICACIÓN:
+1. Analiza las palabras clave en el mensaje del usuario
+2. Considera los documentos relevantes obtenidos del Retriever (embeddings precomputados en BD)
+3. Los documentos incluyen similitud, keywords y problemas específicos
+4. Asigna un nivel de confianza basado en la claridad del mensaje y similitud de documentos
+5. Si la similitud de documentos es > 0.7 Y el mensaje es claro, asigna confianza >= 0.75
+6. Si la confianza es < 0.75, indica que necesitas más información
+
+FORMATO DE RESPUESTA:
+{format_instructions}
+
+Analiza el mensaje del usuario cuidadosamente usando los documentos del Retriever."""),
+            ("human", "Mensaje del usuario: {user_message}")
+        ])
+    
+    async def identify_incident_type_async(self, user_message: str) -> Dict[str, Any]:
+        """
+        Versión async que usa LangChain Retriever para buscar documentos relevantes.
+        """
+        try:
+            # Separar mensaje actual de contexto histórico si existe
+            if " | HISTORIAL: " in user_message:
+                current_message, historical_context = user_message.split(" | HISTORIAL: ", 1)
+                combined_text = f"{current_message} {historical_context}"
+                analysis_context = f"Mensaje actual: {current_message}\nContexto histórico: {historical_context}"
+            else:
+                current_message = user_message
+                combined_text = user_message
+                analysis_context = f"Mensaje a analizar: {user_message}"
+            
+            # Usar LangChain Retriever para obtener documentos relevantes
+            relevant_documents = self.retriever.get_relevant_documents(combined_text)
+            
+            # Formatear documentos para el prompt
+            docs_text = self._format_retriever_documents(relevant_documents)
+            
+            # Ejecutar prompt de identificación
+            formatted_prompt = self.identification_prompt.format(
+                user_message=analysis_context,
+                relevant_documents=docs_text,
+                format_instructions=self.parser.get_format_instructions()
+            )
+            
+            response = await asyncio.to_thread(self.llm.invoke, formatted_prompt)
+            
+            # Parsear respuesta estructurada
+            identification = self.parser.parse(response.content)
+            
+            # Enriquecer resultado con información del Retriever
+            result = {
+                "incident_type": identification.incident_type,
+                "confidence": identification.confidence,
+                "keywords": identification.keywords,
+                "reasoning": identification.reasoning,
+                "problem_description": identification.problem_description,
+                "relevant_documents": [doc.metadata for doc in relevant_documents],  # Metadata de docs
+                "analysis_mode": "with_history" if " | HISTORIAL: " in user_message else "single_message",
+                "data_source": "langchain_retriever"
+            }
+            
+            # Boost de confianza basado en similitud de documentos del Retriever
+            if relevant_documents:
+                max_similarity = max(doc.metadata.get('similarity', 0) for doc in relevant_documents)
+                if max_similarity > 0.7 and identification.incident_type:
+                    # Verificar si el tipo identificado coincide con algún documento relevante
+                    matching_docs = [doc for doc in relevant_documents 
+                                   if doc.metadata.get('incident_type') == identification.incident_type]
+                    if matching_docs:
+                        result["confidence"] = min(1.0, result["confidence"] + 0.2)  # Boost mayor con Retriever
+                        result["reasoning"] += f" (Reforzado por Retriever - similitud: {max_similarity:.2f})"
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"❌ Error en identify_incident_type_async con Retriever: {e}")
+            return {
+                "incident_type": "unknown",
+                "confidence": 0.0,
+                "keywords": [],
+                "reasoning": f"Error en identificación: {str(e)}",
+                "problem_description": None,
+                "relevant_documents": [],
+                "analysis_mode": "error",
+                "data_source": "error"
+            }
+    
+    def _format_retriever_documents(self, documents: List[Document]) -> str:
+        """Formatear documentos del Retriever para incluir en el prompt"""
+        if not documents:
+            return "No se encontraron documentos relevantes."
+        
+        formatted_lines = []
+        for i, doc in enumerate(documents, 1):
+            similarity = doc.metadata.get('similarity', 0)
+            incident_type = doc.metadata.get('incident_type', 'unknown')
+            keywords = ', '.join(doc.metadata.get('keywords', []))
+            
+            formatted_lines.append(
+                f"{i}. TIPO: {incident_type.upper()} | SIMILITUD: {similarity:.3f}\n"
+                f"   KEYWORDS: {keywords}\n"
+                f"   CONTENIDO: {doc.page_content[:200]}..."  # Primeros 200 chars
+            )
+        
+        return '\n\n'.join(formatted_lines)
+    
+    @tool
+    def identify_incident_type(self, user_message: str) -> Dict[str, Any]:
+        """
+        Wrapper síncrono para compatibilidad con LangChain Tools.
+        Usa LangChain Retriever internamente.
+        """
+        try:
+            # Ejecutar versión async en un bucle de eventos
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(self.identify_incident_type_async(user_message))
+                return result
+            finally:
+                loop.close()
+        except Exception as e:
+            logging.error(f"❌ Error en wrapper síncrono con Retriever: {e}")
+            return {
+                "incident_type": "unknown",
+                "confidence": 0.0,
+                "keywords": [],
+                "reasoning": f"Error en wrapper: {str(e)}",
+                "problem_description": None,
+                "relevant_documents": [],
+                "analysis_mode": "error",
+                "data_source": "error"
+            }
+
+# =============================================================================
+# NODO PRINCIPAL DE IDENTIFICACIÓN
+# =============================================================================
+
+
+
+class IdentificacionNode(BaseNode):
+    """
+    Nodo principal para identificación de incidencias técnicas.
+    
+    FUNCIONAMIENTO:
+    1. Carga tipos comunes al inicio de la conversación
+    2. Usa recuperación semántica desde BD con get_vectorizer()
+    3. Implementa agente React con Tool de identificación
+    4. Confirma tipo identificado con el usuario
+    5. Actualiza estado EroskiState cuando se confirma
+    """
+    
+
+    def __init__(self):
+        super().__init__("IdentificacionIncidencia")
+        self.llm = get_llm()
+        self.confirmation_tool = ConfirmationTool() if CONFIRMATION_AVAILABLE else None
+
+        self.incidents_data = self._load_incidents_data()
+        self.semantic_retriever = EroskiIncidentRetriever(self.incidents_data)
+        self.identify_tool = IdentifyIncidentTool(
+            self.incidents_data, self.llm, self.semantic_retriever
+        )
+
+        # 💡 Nuevo: parser + agente
+        self.response_parser = PydanticOutputParser(pydantic_object=IncidentResponse)
+        self.chain = self._setup_incident_chain()
+
+    def _load_incidents_data(self) -> Dict[str, Any]:
+        """Cargar datos de incidencias desde el archivo JSON"""
+        try:
+            # Buscar archivo en diferentes ubicaciones
+            possible_paths = [
+                Path("data/eroski_incidents.json"),
+            ]
+            
+            for json_path in possible_paths:
+                if json_path.exists():
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        # Verificar estructura del JSON
+                        if "incident_types" in data:
+                            self.logger.info(f"✅ Cargados datos de incidencias desde {json_path}")
+                            return data["incident_types"]
+                        elif "tipo_incidente" in data:
+                            self.logger.info(f"✅ Cargados datos de incidencias desde {json_path}")
+                            return data["tipo_incidente"]
+            
+            self.logger.error("❌ No se encontró archivo de incidencias")
+            return {}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error cargando datos de incidencias: {e}")
+            return {}
+
+    def _get_common_examples_for_prompt(self, limit: int = 4) -> str:
+        ejemplos = []
+        for i, (incident_type, data) in enumerate(self.incidents_data.items()):
+            if i >= limit:
+                break
+            desc = data.get("description", "")
+            ejemplos.append(f"- {incident_type}: {desc}")
+        return "\n".join(ejemplos)
+
+    def _get_common_examples(self) -> str:
+        """Obtener ejemplos representativos de tipos comunes"""
+        examples = []
+        common_types = ['balanza', 'balanzas', 'tpv', 'impresoras']  # Tipos más comunes
+        
+        for incident_type in common_types:
+            if incident_type in self.incidents_data:
+                data = self.incidents_data[incident_type]
+                name = data.get('name', incident_type)
+                description = data.get('description', '')
+                examples.append(f"🔧 **{name}**: {description}")
+        
+        if examples:
+            return "Estos son algunos tipos comunes de incidencias:\n\n" + '\n'.join(examples)
+        else:
+            return "Por favor, describe el problema que estás experimentando."
+    
+    async def execute(self, state: EroskiState) -> Command:
+        try:
+            self.logger.info("🔍 Iniciando identificación de incidencia")
+            logging.info("👹👹 Entrada en el nodo de identificación de incidencia...👹👹")
+            # 1. Verificar autenticación
+            if not state.get("authenticated"):
+                return Command(update={
+                    "messages": [AIMessage(content="Debes estar autenticado para reportar incidencias.")],
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True
+                })
+
+            messages = state.get("messages", [])
+            last_message, all_user_messages = self._extract_user_messages(messages)
+            attempts = state.get("identification_attempts", 0)
+            max_attempts = state.get("max_intent_tipo_incidencia", 4)
+            logging.info(f"👹👹 Intentos de identificación: {attempts}/{max_attempts}")
+
+            # 2. Escalado automático si se supera el límite de intentos
+            if attempts >= max_attempts:
+                self.logger.warning(f"⚠️ Límite de intentos alcanzado: {attempts}/{max_attempts}")
+                return Command(update={
+                    "messages": [AIMessage(content="He intentado identificar la incidencia varias veces. Te voy a conectar con un supervisor para ayudarte mejor.")],
+                    "escalation_needed": True,
+                    "escalation_reason": f"Límite de intentos ({attempts}/{max_attempts})",
+                    "current_node": "supervisor",
+                    "awaiting_user_input": False
+                })
+            
+            respuesta = await self._identificar_incidencia(all_user_messages, state)
+            mensaje_ai = respuesta.pop("respuesta_al_usuario", None)
+            update_dict = respuesta.copy()
+            update_dict["messages"] = [AIMessage(content=mensaje_ai)] if mensaje_ai else "puede repetir el mensaje anterior, por favor?"
+            logging.info(f"👹👹👹\n\n\nrespuesta: {respuesta}\n\n\n👹👹👹")
+            
+            for key, value in respuesta.items():
+                print(f"key: {key}, value: {value}")
+            
+            return Command(update=update_dict)
+
+
+        except Exception as e:
+            self.logger.error(f"❌ Error en execute: {e}")
+            return Command(update={
+                "messages": [AIMessage(content="Disculpa, ha ocurrido un error. ¿Puedes describir tu problema de nuevo?")],
+                "error_count": state.get("error_count", 0) + 1,
+                "awaiting_user_input": True
+            })
+        
+    def get_actor_description(self) -> str:
+        return "Identifico tipos de incidencias técnicas usando IA conversacional y recuperación semántica"
+
+    def get_required_fields(self) -> List[str]:
+        return ["authenticated", "messages"]
+
+    def _extract_user_messages(self, messages: List) -> Tuple[Optional[str], List[str]]:
+        """Extraer último mensaje y todos los mensajes del usuario del historial"""
+        try:
+            user_messages = []
+            last_message = None
+            
+            for msg in messages:
+                if isinstance(msg, HumanMessage) and msg.content.strip():
+                    user_messages.append(msg.content.strip())
+                    last_message = msg.content.strip()  # El último se sobrescribe
+            
+            self.logger.info(f"📝 Extraídos {len(user_messages)} mensajes del usuario")
+            return last_message, user_messages
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error extrayendo mensajes: {e}")
+            return None, []
+
+    async def _handle_confirmation(self, state: EroskiState, last_message: str) -> Command:
+        try:
+            attempts = state.get("identification_attempts", 0)
+            messages = state.get("messages", [])
+            
+            # 1. Evaluar si el usuario ha confirmado o rechazado
+            if not self.confirmation_tool or not last_message:
+                confirmation = "si" if any(word in last_message.lower() 
+                                            for word in ["sí", "si", "correcto", "exacto", "afirmativo"]) else "no"
+            else:
+                confirmation = self.confirmation_tool.check_with_history(last_message, messages)
+            
+            print(f"👹 confirmacion: {confirmation}")
+            self.logger.info(f"🔍 Confirmación analizada: '{last_message}' -> '{confirmation}'")
+
+            incident_type = state.get("pending_incident_type")
+
+            if confirmation == "si":
+                print("👹 Ha dicho que sí!")
+                response_text = f"¡Perfecto! He confirmado que el problema es con **{incident_type}**. Ahora vamos a recopilar más detalles sobre la incidencia."
+                return Command(update={
+                    "messages": [AIMessage(content=response_text)],
+                    "incident_type": incident_type,
+                    "incident_type_confirmed": True,
+                    "pending_confirmation": False,
+                    "pending_incident_type": None,
+                    "incident_info_adicional_completa": False,
+                    "current_node": "identificar_incidencia",
+                    "awaiting_user_input": True
+                })
+            elif confirmation == "no":
+                self.logger.info(f"❌ Usuario rechazó tipo '{incident_type}', reanalizando con agente React")
+                rejected_type = incident_type
+                previous = state.get("previous_rejected_types", []) + [rejected_type]
+                chat_history = self._format_chat_history(messages)
+
+                enriched_input = f"""{last_message}
+
+                Ya ha rechazado el tipo: {rejected_type}
+                Historial anterior:
+                {chat_history}
+                """
+
+                try:
+                    result = await self.chain.ainvoke({
+                        "input": enriched_input,
+                        "chat_history": chat_history
+                    })
+                    print(f"👹result after No Confirmation: {result}")
+                    # 2. Si el agente devuelve un nuevo tipo con confianza alta, autoconfirmar
+                    print(f"👹👹👹result: {result}\n\nresult.incident_type: {result.incident_type}\n\nrejected_type: {rejected_type}")
+                    if result and result.incident_type and result.incident_type != rejected_type:
+                        print(f"👹👹👹 Entra autoconfirmacion")
+                        if result.confidence >= 0.9:
+                            auto_msg = f"""Detecté con alta confianza que el problema es con **{result.incident_type}** (confianza: {result.confidence:.2f}).
+
+                            {result.reasoning}
+
+                            Procedo a confirmar automáticamente."""
+                            return Command(update={
+                                "messages": [AIMessage(content=auto_msg)],
+                                "incident_type": result.incident_type,
+                                "incident_type_confirmed": True,
+                                "pending_confirmation": False,
+                                "pending_incident_type": None,
+                                "identification_source": "autoconfirmed_after_rejection",
+                                "awaiting_user_input": True,
+                                "incident_info_adicional_completa": False,
+                                "identification_attempts": attempts + 1,
+                                "previous_rejected_types": previous
+                            })
+
+                        # 3. Confianza normal: volver a pedir confirmación
+                        confirm_msg = f"""Entendido, no es un problema con **{rejected_type}**.
+
+    He analizado tu mensaje y detecté que podría tratarse de **{result.incident_type}** (confianza: {result.confidence:.2f}).
+
+    {result.reasoning}
+
+    ¿Confirmas que el problema es con **{result.incident_type}**?"""
+                        return Command(update={
+                            "messages": [AIMessage(content=confirm_msg)],
+                            "pending_confirmation": True,
+                            "pending_incident_type": result.incident_type,
+                            "identification_confidence": result.confidence,
+                            "identification_keywords": result.keywords,
+                            "identification_source": "react_agent_after_rejection",
+                            "incident_info_adicional_completa": False,
+                            "awaiting_user_input": True,
+                            "identification_attempts": attempts + 1,
+                            "previous_rejected_types": previous
+                        })
+
+                    # 4. Fallback: preguntar al usuario manualmente si no se encontró nada útil
+                    specific_question = self._generate_question_avoiding_rejected_types(previous, state)
+                    return Command(update={
+                        "messages": [AIMessage(content=f"Entendido, no es un problema con **{rejected_type}**.\n\n{specific_question}")],
+                        "pending_confirmation": False,
+                        "pending_incident_type": None,
+                        "awaiting_user_input": True,
+                        "identification_attempts": attempts + 1,
+                        "previous_rejected_types": previous
+                    })
+
+                except Exception as e:
+                    self.logger.error(f"❌ Error en reintento con agente React: {e}")
+                    specific_question = self._generate_question_avoiding_rejected_types(previous, state)
+                    return Command(update={
+                        "messages": [AIMessage(content=f"Entendido, no es un problema con **{rejected_type}**.\n\n{specific_question}")],
+                        "pending_confirmation": False,
+                        "pending_incident_type": None,
+                        "awaiting_user_input": True,
+                        "identification_attempts": attempts + 1,
+                        "previous_rejected_types": previous
+                    })
+
+            # 5. Si la respuesta no es clara ("no sé", etc.)
+            clarification = f"""No estoy seguro de tu respuesta sobre si el problema es con **{incident_type}**.
+
+    ¿Podrías confirmarme claramente:
+    - ¿SÍ es un problema con {incident_type}?
+    - ¿NO es un problema con {incident_type}?
+
+    Si no es con {incident_type}, por favor describe con qué equipo o sistema tienes el problema."""
+            return Command(update={
+                "messages": [AIMessage(content=clarification)],
+                "awaiting_user_input": True,
+                "identification_attempts": attempts + 1
+            })
+
+        except Exception as e:
+            self.logger.error(f"❌ Error en _handle_confirmation: {e}")
+            return Command(update={
+                "messages": [AIMessage(content="Disculpa, ocurrió un error procesando tu respuesta. ¿Puedes intentarlo de nuevo?")],
+                "pending_confirmation": False,
+                "pending_incident_type": None,
+                "error_count": state.get("error_count", 0) + 1,
+                "awaiting_user_input": True
+            })
+
+
+
+    async def _identificar_incidencia(self, user_messages: List[str], state: EroskiState) -> Dict[str, Any]:
+        """Analizar todo el historial de mensajes del usuario buscando pistas de incidencias"""
+        print("👹👹Entra en _identificar_incidencia")
+        try:
+            # Combinar todos los mensajes del usuario en un texto único
+            parser = JsonOutputParser(pydantic_object=IdentificarIncidencia)
+            format_instructions = parser.get_format_instructions()
+            combined_text = " | ".join(user_messages)
+            self.logger.info(f"🔍 Analizando historial combinado: {combined_text[:200]}...")
+            historico_mensaje_usuario = format_full_chat_history(state.get("messages", []), 100)
+            print(f"👹👹👹ha pasado historico_mensaje_usuario: 👹👹👹")
+            incident_user_name = state.get("incident_user_name", "Empleado")
+            
+            incident_types_list = ", ".join(self.incidents_data.keys())  # Genera la lista de tipos válidos desde el JSON
+
+            system_prompt = """
+                Eres un asistente de Eroski. Tu tarea es identificar el tipo de incidencia que quiere reportar el usuario que se llama {incident_user_name}
+
+                Debes analizar el historial de mensajes del usuario y verificar si el usuario ya mencionó una incidencia.
+                Las incidencias deben estar dentro de la lista de tipos válidos
+
+                === LISTA DE TIPOS VÁLIDOS DE INCIDENCIA === 
+                {incident_types_list} 
+
+                Si no localizas la incidencia dentro de la lista, pregunta al usuario por más detalles que te ayuden a identificarla una de la lista.
+
+                === HISTORICO DE MENSAJES ===
+                - Este es el historico de la conversación. Utilizalo para seguir el hilo y la coherencia de la conversación: 
+                {historico_mensaje_usuario}
+
+                === REGLAS DE ANÁLISIS ===
+                1. Busca menciones de equipos como: balanza, TPV, caja, impresora, ordenador, red, wifi, etc.
+                2. Busca síntomas como: "no funciona", "error", "problema", "fallo", "no enciende", "no imprime".
+                3. Compara cualquier equipo detectado con los tipos válidos del sistema.
+                4. Si el equipo mencionado NO aparece en la lista de tipos válidos, pregunta al usuario por más información para ayudar a identificar la incidencia.
+                5. En ese caso, informa al usuario que no puedes identificar el equipo y sugiere revisar si se trata de otro más común.
+                6. Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`, si no, marca `"escalation_needed": false`
+
+                RESPUESTA AL USUARIO:
+                - Si detectas una incidencia conocida, genera un mensaje claro y amable para pedir confirmación. Ejemplo: "¿Confirmas que el problema es con una balanza?"
+                - Si NO identificas ninguna incidencia válida, sugiere con amabilidad al usuario que revise el equipo y proporciona ejemplos comunes.
+                - Si el usuario quiere hablar con un supervisor genera un mensaje amable indicando que le pasas a un supervisor
+
+                - Analiza el histórico de mensajes, y responde al usuario siguiendo el hilo de la conversación.
+
+                === FORMATO DE RESPUESTA ===
+
+                Devuelve un JSON con los siguientes campos:
+
+                {format_instructions}
+
+                Responde en JSON, sin markdowns, no incluyas texto adicional.
+                """
+
+
+            historical_prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "{input}")
+            ]).partial(format_instructions=format_instructions)
+
+            mensaje_usuario = user_messages[-1] if isinstance(user_messages[-1], str) else user_messages[-1].content
+
+            # Construcción del chain y ejecución
+            llm_chain = historical_prompt | self.llm | parser
+            inputs = {
+                "incident_user_name":incident_user_name,
+                "incident_types_list":incident_types_list,
+                "historico_mensaje_usuario":historico_mensaje_usuario,
+                "input": mensaje_usuario
+            }
+
+            result = await llm_chain.ainvoke(inputs)
+            
+            return result
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error en identificar incidencia: {e}")
+            return {"incident_found": False, "confidence": 0.0, "reasoning": f"Error: {str(e)}"}
+    
+    def _fallback_historical_analysis(self, user_messages: List[str], relevant_documents: List[Document]) -> Dict[str, Any]:
+        """Análisis de fallback basado en keywords si falla el LLM"""
+        try:
+            combined_text = " ".join(user_messages).lower()
+            
+            # Keywords por tipo de incidencia
+            keyword_patterns = {
+                "balanza": ["balanza", "peso", "etiqueta", "precio", "gramos", "pesado", "bascula"],
+                "tpv": ["tpv", "caja", "terminal", "pago", "tarjeta", "ticket", "registradora"],
+                "impresoras": ["impresora", "imprimir", "papel", "cartucho", "atasco"],
+                "red": ["internet", "wifi", "red", "conexion", "lento", "desconectado"]
+            }
+            
+            best_match = None
+            best_score = 0
+            best_keywords = []
+            
+            for incident_type, keywords in keyword_patterns.items():
+                score = sum(1 for kw in keywords if kw in combined_text)
+                if score > best_score:
+                    best_score = score
+                    best_match = incident_type
+                    best_keywords = [kw for kw in keywords if kw in combined_text]
+            
+            # También considerar documentos relevantes del retriever
+            if relevant_documents and not best_match:
+                top_doc = relevant_documents[0]
+                if top_doc.metadata.get("similarity", 0) > 0.3:
+                    best_match = top_doc.metadata.get("incident_type")
+                    best_score = top_doc.metadata.get("similarity") * 5  # Convertir a escala similar
+                    best_keywords = top_doc.metadata.get("keywords", [])
+            
+            confidence = min(best_score / 3.0, 1.0) if best_score > 0 else 0.0
+            
+            return {
+                "incident_found": confidence > 0.3,
+                "incident_type": best_match,
+                "confidence": confidence,
+                "evidence": f"Keywords detectadas: {', '.join(best_keywords)}" if best_keywords else "Sin evidencia clara",
+                "keywords_detected": best_keywords,
+                "reasoning": "Análisis de fallback basado en keywords",
+                "needs_more_info": confidence < 0.5
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error en fallback histórico: {e}")
+            return {"incident_found": False, "confidence": 0.0}
+
+    def _setup_incident_chain(self) -> RunnableSequence:
+        """Devuelve una cadena que analiza el mensaje y devuelve un IncidentResponse estructurado"""
+        parser = PydanticOutputParser(pydantic_object=IncidentResponse)
+
+        prompt_template = PromptTemplate(
+            template="""Eres un asistente experto en soporte técnico para empleados de Eroski.
+
+    Analiza el mensaje del usuario y devuelve un JSON estructurado siguiendo estas reglas:
+
+    - Identifica el tipo de incidencia (balanza, tpv, impresora, red, etc.)
+    - Si el usuario ya lo confirmó, marca 'incident_type_confirmed': true
+    - Si aún no lo ha confirmado pero tienes confianza alta (>= 0.75), marca 'incident_type_confirmed': false y pide confirmación
+    - Incluye palabras clave, razonamiento, y nivel de confianza
+    - Si la confianza es muy alta (>= 0.9), puedes marcar 'action_required': 'autoconfirmado'
+    - Si la confianza es moderada (0.5 - 0.75), marca 'action_required': 'confirmacion_usuario'
+    - Si el usuario quiere hablar con un supervisor, o lo solicita explícitamente, marca `"escalation_needed": true`
+    - Si no, marca `"escalation_needed": false`
+
+    MENSAJE DEL USUARIO:
+    {input}
+
+    HISTORIAL DE MENSAJES:
+    {chat_history}
+
+    DEVUELVE SOLO EL SIGUIENTE JSON:
+    {format_instructions}
+    """,
+            input_variables=["input", "chat_history"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
+
+        return prompt_template | self.llm | parser
+
+    def _generate_question_avoiding_rejected_types(self, rejected_types: List[str], state: EroskiState) -> str:
+        """
+        Generar pregunta específica evitando tipos de incidencia ya rechazados
+        """
+        try:
+            # Obtener información del empleado para contextualizar
+            employee_section = state.get("section", "")
+            
+            # Tipos comunes por sección (puedes expandir esto basándote en tu JSON de incidencias)
+            section_equipment_map = {
+                "panadería": ["horno", "amasadora", "cámara de fermentación", "cortadora"],
+                "charcutería": ["cortadora", "báscula", "cámara frigorífica", "envasadora"],
+                "caja": ["tpv", "datafono", "báscula", "impresora tickets"],
+                "reposición": ["handheld", "impresora etiquetas", "transpaleta eléctrica"],
+                "carnicería": ["báscula", "cortadora", "cámara frigorífica", "picadora"],
+                "pescadería": ["báscula", "máquina hielo", "cámara frigorífica"],
+            }
+            
+            # Obtener equipos relevantes para la sección, excluyendo rechazados
+            relevant_equipment = section_equipment_map.get(employee_section.lower(), [])
+            available_equipment = [eq for eq in relevant_equipment if eq not in rejected_types]
+            
+            if available_equipment:
+                equipment_list = ", ".join(available_equipment[:3])  # Máximo 3 para no abrumar
+                question = f"""Dado que trabajas en {employee_section}, ¿el problema podría ser con alguno de estos equipos?
+
+    - {equipment_list}
+
+    O describe con qué otro equipo o sistema tienes dificultades."""
+            else:
+                # Pregunta genérica si no hay equipos específicos disponibles
+                question = """Por favor, describe específicamente:
+
+    1. ¿Qué equipo o sistema está fallando?
+    2. ¿Qué problema concreto está ocurriendo?
+    3. ¿Cuándo empezó el problema?
+
+    Ejemplos: "La báscula no enciende", "El TPV se queda colgado", "La impresora no imprime etiquetas", etc."""
+            
+            return question
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error generando pregunta específica: {e}")
+            return """Por favor, describe con más detalle qué equipo o sistema está fallando y cuál es el problema específico."""
+
+
+    def _format_chat_history(self, messages: List) -> str:
+        """Formatear historial de mensajes para el agente"""
+        try:
+            formatted_lines = []
+            for msg in messages[-10:]:  # Últimos 10 mensajes
+                if isinstance(msg, HumanMessage):
+                    formatted_lines.append(f"Usuario: {msg.content}")
+                elif isinstance(msg, AIMessage):
+                    formatted_lines.append(f"Asistente: {msg.content}")
+            
+            return '\n'.join(formatted_lines) if formatted_lines else "No hay historial previo."
+        
+        except Exception as e:
+            self.logger.error(f"❌ Error formateando historial: {e}")
+            return "Error al cargar historial."
+
+# =============================================================================
+# FUNCIÓN FACTORY PARA EL NODO
+# =============================================================================
+
+async def identificacion_node(state: EroskiState) -> Command:
+    """
+    Función wrapper para LangGraph - Nodo Identificador Incidencia
+    
+    Args:
+        state: Estado actual como EroskiState
+        
+    Returns:
+        Command con las actualizaciones de estado
+    """
+    # Crear instancia del nodo
+    node = IdentificacionNode()
+    # Ejecutar el nodo
+    return await node.execute(state)
+
+
+#def identificacion_node() -> IdentificacionNode:
+#    """Factory function para crear el nodo de identificación"""
+#    await IdentificacionNode()
+
+
+# =============================================================================
+# PUNTO DE ENTRADA PARA TESTING
+# =============================================================================
+
+if __name__ == "__main__":
+    # Test rápido del nodo
+    import asyncio
+    from app.models.eroski_state import create_initial_eroski_state
+    
+    async def test_node():
+        node = identificacion_node()
+        
+        # Estado de prueba
+        test_state = create_initial_eroski_state("test-session")
+        test_state["authenticated"] = True
+        test_state["incident_user_name"] = "Juan Pérez"
+        test_state["messages"] = [
+            HumanMessage(content="Hola, tengo un problema con la balanza")
+        ]
+        
+        # Ejecutar nodo
+        result = await node.execute(test_state)
+        
+        print("✅ Test completado:")
+        print(f"Mensajes: {len(result.update.get('messages', []))}")
+        print(f"Último mensaje: {result.update.get('messages', [])[-1].content if result.update.get('messages') else 'N/A'}")
+    
+    asyncio.run(test_node())

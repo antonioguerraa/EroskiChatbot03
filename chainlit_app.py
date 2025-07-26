@@ -20,14 +20,15 @@ from langchain_core.messages import AIMessage, HumanMessage
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Importaciones del proyecto
-from models.eroski_state import create_initial_eroski_state, EroskiState
-from nodes.identificador_orquestador import identificador_orquestador_node
-from nodes.identificador_manual_node import recoger_datos_empleado_node
-from nodes.identificacion_incidencia_node import identificacion_node
-from nodes.buscar_solucion_node import buscar_solucion_node
-from nodes.supervisor_node import supervisor_node
-from nodes.finalize_node import finalize_node
-from nodes.incident_info_adicional_node import recoger_datos_adicionales_node
+from app.models.eroski_state import create_initial_eroski_state, EroskiState
+from app.nodes.identificador_orquestador import identificador_orquestador_node
+from app.nodes.identificador_manual_node import recoger_datos_empleado_node
+from app.nodes.identificacion_incidencia_node import identificacion_node
+from app.nodes.buscar_solucion_node import buscar_solucion_node
+from app.nodes.supervisor_node import supervisor_node
+from app.nodes.orquestador_busqueda_node import orquestador_busqueda_node
+from app.nodes.finalize_node import finalize_node
+from app.nodes.incident_info_adicional_node import recoger_datos_adicionales_node
 from langgraph.graph import StateGraph, END
 
 # Configuración de logging
@@ -50,33 +51,38 @@ class EroskiChatbot:
         logger.info("🤖 Chatbot Eroski inicializado")
     
 
-    def _build_graph(self):
+    def build_graph(self):
         builder = StateGraph(EroskiState)
         builder.add_node("orquestador", identificador_orquestador_node)
         #builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
         builder.add_node("identificador_manual", recoger_datos_empleado_node)
         builder.add_node("identificar_incidencia", identificacion_node)
         builder.add_node("buscar_solucion", buscar_solucion_node)
+        
 
         builder.add_node("supervisor_node", supervisor_node)
         builder.add_node("resolucion_exitosa", finalize_node)
         builder.add_node("info_adicional_incidencia", recoger_datos_adicionales_node)
-        
+        builder.add_node("orquestador_busqueda", orquestador_busqueda_node)
+        builder.add_edge("orquestador_busqueda", END)
+
         builder.set_entry_point("orquestador")
 
         def route(state: EroskiState):
             print("🎛️Entra en el router🎛️")
             print(f"👹 incident_info_adicional_completa: {state.get('incident_info_adicional_completa')}")
             campos = [  
-                        "busqueda_manual",
-                        "busqueda_faq",
-                        "incident_id",
-                        "incident_department",
-                        "authenticated",
+                        "problem_identified",
+                        #"busqueda_manual",
+                        #"busqueda_faq",
+                        #"incident_id",
+                        #"incident_department",
+                        #"authenticated",
                         #"email_authen_tried",
                         #"employee_id_authent_tried",
-                        "solution_found", 
-                        "incident_type",
+                        #"incident_found", 
+                        #"incident_type",
+                        #"incident_info_adicional",
                         "incident_type_confirmed",
                         "escalation_needed:", 
                         "awaiting_user_input", 
@@ -84,12 +90,12 @@ class EroskiChatbot:
                         "automated_resolution",
                         "incident_id",
                         "awaiting_user_input",
-                        "current_node",
+                        #"current_node",
                         "identification_source",
-                        "pending_confirmation"
+                        #"pending_confirmation"
                       ]
-            #for campo in campos:
-            #    print(f"🎛️ {campo}: {state.get(campo)}")
+            for campo in campos:
+                print(f"🎛️ {campo}: {state.get(campo)}")
 
             #if not state.get("email_authen_tried") and not state.get("employee_id_authent_tried"):
             #    logging.info("👹 Entra en identificador base de datos")
@@ -109,46 +115,7 @@ class EroskiChatbot:
             logging.info("👹 Entra en buscar solución")
             return "buscar_solucion"
 
-        """
-        def ruta_post_identificacion_db(state: EroskiState) -> str:
-            if state.get("authenticated"):
-                return "identificar_incidencia"
-            else:
-                return END
 
-        builder.add_conditional_edges(
-            "identificador_base_de_datos",
-            ruta_post_identificacion_db,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
-
-        def ruta_post_identificacion_manual(state: EroskiState) -> str:
-            return "identificar_incidencia" if state.get("authenticated") else END
-        
-        builder.add_conditional_edges(
-            "identificador_manual",
-            ruta_post_identificacion_manual,
-            {
-                "identificar_incidencia": "identificar_incidencia",
-                END: END
-            }
-        )
-        def ruta_post_identificar_incidencia(state: EroskiState) -> str:
-            return 'buscar_solucion' if state.get('incident_type_confirmed') else END
-
-        builder.add_conditional_edges(
-            'identificar_incidencia',
-            
-            ruta_post_identificar_incidencia,
-            {
-                'buscar_solucion': 'buscar_solucion',
-                END: END
-            }
-        )
-        """
         
         builder.add_conditional_edges(
             "info_adicional_incidencia",
@@ -172,18 +139,34 @@ class EroskiChatbot:
                 )
             )
 
-        builder.add_edge("buscar_solucion", END)
-
+        def ruta_post_buscar_solucion(state: dict) -> str:
+            logging.info("👹Entra en el enrutador buscar_solucion")
+            #logging.info(f"📊 Estado completo en transición:\n{pprint.pformat(state)}")
+            #logging.info(f"👹 ruta_post_buscar_solucion. problem_identified: {state.get('problem_identified')}")
+            #logging.info(f"📥 Estado recibido en orquestador_busqueda: {state}")
+            if state.get("solution_found"):
+                logging.info(f"👹 enrutador solution_found: {state.get('solution_found')}")
+                return "resolucion_exitosa"
+            if state.get("problem_identified"):
+                logging.info(f"👹 problem_identified true: {state.get('problem_identified')}\nVa al nodo orquestador_busqueda")
+                return "orquestador_busqueda"
+            if state.get("escalation_needed"):
+                logging.info(f"👹 enrutador escalation_needed: {state.get('escalation_needed')}")
+                return "supervisor_node"
+            logging.info("👹 enrutador END")
+            return END
+        
         builder.add_conditional_edges(
             "buscar_solucion",
-            lambda state: "buscar_solucion" if state.get("extra_info_provided") 
-                else ("supervisor_node" if state.get("escalation_needed") 
-                else ("resolucion_exitosa" if state.get("solution_found") 
-                else END
-                )
-            )
+            ruta_post_buscar_solucion,
+            {
+                "orquestador_busqueda": "orquestador_busqueda",
+                "supervisor_node": "supervisor_node",
+                "resolucion_exitosa": "resolucion_exitosa",
+                END: END
+            }
         )
-
+        
         builder.add_conditional_edges("orquestador", route, {
             #"identificador_base_de_datos": "identificador_base_de_datos",
             "identificador_manual": "identificador_manual",
@@ -196,7 +179,7 @@ class EroskiChatbot:
         })
 
         return builder.compile()
-    
+ 
     def create_new_session(self, session_id: str) -> EroskiState:
         """Crear nueva sesión con estado inicial"""
         return create_initial_eroski_state(session_id=session_id)
@@ -242,9 +225,12 @@ class EroskiChatbot:
         messages = state.get("messages", [])
         
         # Buscar el último mensaje del AI (igual que en tu lógica original)
+        msg = ""
         for message in reversed(messages):
-            if isinstance(message, AIMessage):
-                return message.content
+            if not isinstance(message, AIMessage):
+                return msg
+            else:
+                msg = msg + message.content + "\n"
         
         return None
 

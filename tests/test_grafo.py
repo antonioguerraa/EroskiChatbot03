@@ -14,23 +14,25 @@ from datetime import datetime
 # Añadir raíz del proyecto al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.eroski_state import create_initial_eroski_state, EroskiState
-from nodes.identificador_orquestador import identificador_orquestador_node
-from nodes.identificador_manual_node import recoger_datos_empleado_node
-from nodes.identificacion_incidencia_node import identificacion_node
-from nodes.buscar_solucion_node import buscar_solucion_node
-from nodes.supervisor_node import supervisor_node
-from nodes.finalize_node import finalize_node
-from nodes.incident_info_adicional_node import recoger_datos_adicionales_node
-from nodes.orquestador_busqueda_node import orquestador_busqueda_node
+from app.models.eroski_state import create_initial_eroski_state, EroskiState
+from app.nodes.identificador_orquestador import identificador_orquestador_node
+from app.nodes.identificador_manual_node import recoger_datos_empleado_node
+from app.nodes.identificacion_incidencia_node import identificacion_node
+from app.nodes.buscar_solucion_node import buscar_solucion_node
+from app.nodes.supervisor_node import supervisor_node
+from app.nodes.finalize_node import finalize_node
+from app.nodes.incident_info_adicional_node import recoger_datos_adicionales_node
+from app.nodes.orquestador_busqueda_node import orquestador_busqueda_node
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
 import logging
+
 logging.basicConfig(
     level=logging.INFO,  # Puedes usar DEBUG, INFO, WARNING, ERROR, CRITICAL
     format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
     datefmt='%H:%M:%S'
 )
+
 class InteractiveGrafoTester:
     def __init__(self):
         self.session_counter = 0
@@ -40,7 +42,6 @@ class InteractiveGrafoTester:
     def build_graph(self):
         builder = StateGraph(EroskiState)
         builder.add_node("orquestador", identificador_orquestador_node)
-        #builder.add_node("identificador_base_de_datos", identificador_base_de_datos_node)
         builder.add_node("identificador_manual", recoger_datos_empleado_node)
         builder.add_node("identificar_incidencia", identificacion_node)
         builder.add_node("buscar_solucion", buscar_solucion_node)
@@ -195,20 +196,12 @@ class InteractiveGrafoTester:
         # 🧩 Mostrar SOLO los mensajes nuevos del agente
         new_messages = self.state.get("messages", [])[prev_len:]
         
-        #messages = self.state.get("messages", [])
-        #last = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
-        #if last:
-        #    print("🧩"*10)
-        #    print(f"🧩🤖 AGENTE: {last.content}")
-        #    print("🧩"*10)
-            # 🧩 Mostrar SOLO los mensajes nuevos del agente
         for m in new_messages:
             if isinstance(m, AIMessage):
                 print("🧩" * 10)
                 print(f"🤖 AGENTE: {m.content}")
                 print("🧩" * 10)
 
-        
         campos = [  
                     "incident_user_name", 
                     "incident_last_name", 

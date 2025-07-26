@@ -16,18 +16,18 @@ from langgraph.checkpoint.memory import MemorySaver
 from typing import Literal, Dict, Any
 import logging
 
-from models.eroski_state import EroskiState, ConsultaType
+from app.models.eroski_state import EroskiState, ConsultaType
 from .base_workflow import BaseWorkflow
 
 # Importar nodos usando el sistema de fallback
-from nodes.pte.authenticate_llm_driven import llm_driven_authenticate_node
-from nodes.classify_enhanced import classify_query_node
-from nodes.finalize_node import finalize_conversation_node
-from nodes.pte.verify import verify_resolution_node
-from nodes.escalate_node import escalate_supervisor_node
-from nodes.search_knowledge import search_knowledge_node
-from nodes.search_solution import search_solution_node
-from nodes.collect_incident import collect_incident_details_node
+from app.nodes.pte.authenticate_llm_driven import llm_driven_authenticate_node
+from app.nodes.classify_enhanced import classify_query_node
+from app.nodes.finalize_node import finalize_conversation_node
+from app.nodes.pte.verify import verify_resolution_node
+from app.nodes.escalate_node import escalate_supervisor_node
+from app.nodes.search_knowledge import search_knowledge_node
+from app.nodes.search_solution import search_solution_node
+from app.nodes.collect_incident import collect_incident_details_node
 
 
 class EroskiFinalWorkflow(BaseWorkflow):

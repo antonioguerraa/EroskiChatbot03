@@ -216,5 +216,130 @@
     "solution_content": null,
     "escalation_needed": false,
     "escalation_reason": null
+  },
+  "ER-9162": {
+    "codigo_incidencia": "ER-9162",
+    "timestamp_creacion": "2025-07-25T21:11:50.352384",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-25T21:11:50.352384"
+      }
+    ],
+    "session_id": "test_session_1_20250725_211146",
+    "timestamp_actualizacion": "2025-07-25T21:11:50.352384",
+    "version_sistema": "1.0"
+  },
+  "ER-2988": {
+    "codigo_incidencia": "ER-2988",
+    "timestamp_creacion": "2025-07-25T21:13:07.431057",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-25T21:14:32.362122"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Lo siento, no se pudo procesar tu solicitud. Por favor, intenta de nuevo.",
+        "timestamp": "2025-07-25T21:14:32.362122"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-25T21:14:32.362122"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-25T21:14:32.362122"
+      }
+    ],
+    "session_id": "test_session_1_20250725_211300",
+    "timestamp_actualizacion": "2025-07-25T21:14:32.362122",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-2123": {
+    "codigo_incidencia": "ER-2123",
+    "timestamp_creacion": "2025-07-25T21:14:57.460427",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-25T21:14:57.460427"
+      }
+    ],
+    "session_id": "test_session_1_20250725_211451",
+    "timestamp_actualizacion": "2025-07-25T21:14:57.460427",
+    "version_sistema": "1.0"
+  },
+  "ER-4838": {
+    "codigo_incidencia": "ER-4838",
+    "timestamp_creacion": "2025-07-25T21:19:42.361074",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-25T21:19:42.361074"
+      }
+    ],
+    "session_id": "test_session_1_20250725_211933",
+    "timestamp_actualizacion": "2025-07-25T21:19:42.361074",
+    "version_sistema": "1.0"
   }
 }

@@ -17,7 +17,7 @@ from datetime import datetime
 import pickle
 
 # Imports del proyecto
-from utils.advanced_document_vectorizer import (
+from app.utils.advanced_document_vectorizer import (
     AdvancedDocumentVectorizer,
     DocumentMetadata,
     EnrichedChunk
@@ -264,7 +264,7 @@ async def load_and_save_to_database(filepath: str):
         print(f"📁 Cargados {len(chunks_data)} chunks desde archivo")
         
         # 2. Importar clase de BD (aquí puedes usar cualquier implementación)
-        from utils.load_chunks_to_database import DatabaseChunkLoader
+        from app.utils.load_chunks_to_database import DatabaseChunkLoader
         
         # 3. Reconstruir objetos EnrichedChunk si es necesario
         # (o implementar guardado directo desde diccionario)

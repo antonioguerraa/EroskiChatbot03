@@ -15,7 +15,7 @@ import logging
 from typing import Dict, Any, Optional
 from langgraph.graph.state import CompiledStateGraph
 
-from models.state import EroskiState
+from app.models.state import EroskiState
 from config.settings import get_settings
 from datetime import datetime
 from workflows import get_workflow_manager, WorkflowType 
