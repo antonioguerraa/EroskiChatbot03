@@ -341,5 +341,1718 @@
     "session_id": "test_session_1_20250725_211933",
     "timestamp_actualizacion": "2025-07-25T21:19:42.361074",
     "version_sistema": "1.0"
+  },
+  "ER-2553": {
+    "codigo_incidencia": "ER-2553",
+    "timestamp_creacion": "2025-07-26T15:31:33.223816",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea hacer un backup de la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-26T15:31:49.184679"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Hola, ¿en qué puedo ayudarte? Por favor, indícame el problema o consulta que tienes con la balanza.",
+        "timestamp": "2025-07-26T15:31:49.184679"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup de la balanza",
+        "timestamp": "2025-07-26T15:31:49.184679"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T15:31:49.184679"
+      }
+    ],
+    "session_id": "eroski_session_20250726_153125",
+    "timestamp_actualizacion": "2025-07-26T15:31:49.184679",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-5900": {
+    "codigo_incidencia": "ER-5900",
+    "timestamp_creacion": "2025-07-26T15:35:44.569659",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer una copia de seguridad de la balanza.",
+      "El usuario consulta cómo funciona la retroiluminación de la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer una copia de seguridad de la balanza",
+        "timestamp": "2025-07-26T15:36:13.307871"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T15:36:13.307871"
+      },
+      {
+        "type": "AIMessage",
+        "content": "📘 Manual:\nPara realizar una copia de seguridad de los datos de tu balanza, sigue estos pasos:\n\n1. Utiliza el software LBS (Load Backup System) en tu ordenador.\n2. Introduce la dirección IP del PC y la dirección IP de la balanza o balanzas que deseas respaldar.\n3. Asegúrate de que la balanza esté configurada en MODO LBS (accede al menú 5 3 5 de la balanza). Esto es crucial, ya que de lo contrario, la copia de seguridad dará error.\n4. Una vez configurado, haz clic en el botón correspondiente en el software LBS para iniciar la copia de seguridad.\n5. El archivo de respaldo se guardará automáticamente en la siguiente ubicación de tu ordenador: `C:\\Archivos de programa\\DFS\\LBS\\Backups`.\n\nSi necesitas más información o ayuda, no dudes en consultarme.\n\n🔗 **Referencias directas:**\n• 📄 [Página 161 (Dibal Mistral)](http://localhost:8000/docs/Manual%20Balanza%20DIBAL%20Mistral.pdf#page=161)\n• 🖥️ [Ver con resaltado automático](http://localhost:8000/viewer/Manual%20Balanza%20DIBAL%20Mistral.pdf?page=161&highlight=%7B%22x%22%3A+151.65592041015626%2C+%22y%22%3A+441.0302984619141%2C+%22width%22%3A+240.4514566040039%2C+%22height%22%3A+11.923717193603515%2C+%22color%22%3A+%22rgba%28255%2C+255%2C+0%2C+0.3%29%22%2C+%22chunk_id%22%3A+%22chunk_000522%22%2C+%22page%22%3A+161%7D)\n\n💡 **Tip:** Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento.\n\n¿Resuelve esto tu cuestión?",
+        "timestamp": "2025-07-26T15:36:13.307871"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "como funciona la retroiluminación?",
+        "timestamp": "2025-07-26T15:36:13.307871"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T15:36:13.307871"
+      }
+    ],
+    "session_id": "eroski_session_20250726_153530",
+    "timestamp_actualizacion": "2025-07-26T15:36:13.307871",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-1349": {
+    "codigo_incidencia": "ER-1349",
+    "timestamp_creacion": "2025-07-26T15:46:35.985815",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer una copia de seguridad en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer una copia de seguridad",
+        "timestamp": "2025-07-26T15:46:37.993628"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T15:46:37.993628"
+      }
+    ],
+    "session_id": "eroski_session_20250726_154622",
+    "timestamp_actualizacion": "2025-07-26T15:46:37.993628",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6130": {
+    "codigo_incidencia": "ER-6130",
+    "timestamp_creacion": "2025-07-26T17:34:01.469922",
+    "estado": "escalada",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "AIMessage",
+        "content": "No entiendo tu consulta. Por favor, indícame qué problema o consulta tienes con la balanza para poder ayudarte.",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "que sabes de mi",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "AIMessage",
+        "content": "No he podido identificar un problema o consulta relacionado con la balanza. Por favor, indícame qué necesitas para poder ayudarte.",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "hazme un resumen del manual",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "AIMessage",
+        "content": "No he recibido ninguna información sobre un problema técnico o consulta relacionada con la balanza. Por favor, indícame en qué necesitas ayuda con este equipo.",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Hola Javier, veo que tienes problemas técnicos complejos.\n\n🎯 **Tu caso ha sido asignado:**\n• **Número de caso:** SUP-20250726173709-1\n• **Departamento:** Soporte Técnico\n• **Motivo:** problemas técnicos\n• **Prioridad:** ALTA\n\n📞 **Información de contacto:**\n• **Teléfono:** +34 946 211 000\n• **Email:** soporte.tecnico@eroski.es\n• **Horario:** 24/7\n\n⏱️ **Próximos pasos:**\n1. Tu caso está registrado con prioridad alta\n2. El equipo de Soporte Técnico revisará tu situación\n3. Te contactarán siguiendo el orden de prioridad\n\n📋 **Información importante:**\n• **Guarda este número de caso:** SUP-20250726173709-1\n• Tenlo a mano cuando te contacten\n• Si necesitas seguimiento urgente, menciona este número\n\n🔧 **¿Necesitas contactar directamente?**\n• Teléfono: +34 946 211 000\n• Email: soporte.tecnico@eroski.es\n• Horario de atención: 24/7\n\n¡Gracias por tu paciencia! El equipo de Soporte Técnico se pondrá en contacto contigo según la prioridad asignada. 🤝",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Hola Javier, veo que tienes problemas técnicos complejos.\n\n🎯 **Tu caso ha sido asignado:**\n• **Número de caso:** SUP-20250726173715-1\n• **Departamento:** Soporte Técnico\n• **Motivo:** problemas técnicos\n• **Prioridad:** ALTA\n\n📞 **Información de contacto:**\n• **Teléfono:** +34 946 211 000\n• **Email:** soporte.tecnico@eroski.es\n• **Horario:** 24/7\n\n⏱️ **Próximos pasos:**\n1. Tu caso está registrado con prioridad alta\n2. El equipo de Soporte Técnico revisará tu situación\n3. Te contactarán siguiendo el orden de prioridad\n\n📋 **Información importante:**\n• **Guarda este número de caso:** SUP-20250726173715-1\n• Tenlo a mano cuando te contacten\n• Si necesitas seguimiento urgente, menciona este número\n\n🔧 **¿Necesitas contactar directamente?**\n• Teléfono: +34 946 211 000\n• Email: soporte.tecnico@eroski.es\n• Horario de atención: 24/7\n\n¡Gracias por tu paciencia! El equipo de Soporte Técnico se pondrá en contacto contigo según la prioridad asignada. 🤝",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-26T17:37:18.553057"
+      }
+    ],
+    "session_id": "eroski_session_20250726_173342",
+    "timestamp_actualizacion": "2025-07-26T17:37:18.553057",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": true,
+    "escalation_reason": null
+  },
+  "ER-6086": {
+    "codigo_incidencia": "ER-6086",
+    "timestamp_creacion": "2025-07-26T17:37:25.452231",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario solicita un resumen del manual de la balanza.",
+      "El usuario desea realizar un backup en la balanza.",
+      "El usuario consulta cómo se utiliza la balanza para pesar."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Hola, ¿en qué puedo ayudarte? Por favor, indícame si tienes alguna consulta o problema con la balanza.",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "hazme un resumen del manual",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Lo siento, no se encontró solución en el manual ni en las incidencias frecuentes. ¿Podrías darme más información?",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "📘 Manual:\nPara realizar un backup (copia de seguridad) de tu balanza, sigue estos pasos:\n1. Asegúrate de que la balanza esté en MODO LBS. Esto se configura accediendo al menú 5 3 5 de la balanza.\n2. Utiliza el software LBS (Load Backup System) en tu PC. Para conectarlo con la balanza, introduce la dirección IP del PC y la dirección IP de la balanza.\n3. Una vez configurado, haz clic en el botón correspondiente para iniciar la copia de seguridad.\n4. La copia se guardará automáticamente en la ruta: `C:\\Archivos de programa\\DFS\\LBS\\Backups` en tu PC.\nSi necesitas ver el contenido de una copia de seguridad, utiliza el botón correspondiente en el software LBS.\n\n🔗 **Referencias directas:**\n• 📄 [Página 161 (Dibal Mistral)](http://localhost:8000/docs/Manual%20Balanza%20DIBAL%20Mistral.pdf#page=161)\n• 🖥️ [Ver con resaltado automático](http://localhost:8000/viewer/Manual%20Balanza%20DIBAL%20Mistral.pdf?page=161&highlight=%7B%22x%22%3A+151.65592041015626%2C+%22y%22%3A+441.0302984619141%2C+%22width%22%3A+240.4514566040039%2C+%22height%22%3A+11.923717193603515%2C+%22color%22%3A+%22rgba%28255%2C+255%2C+0%2C+0.3%29%22%2C+%22chunk_id%22%3A+%22chunk_000522%22%2C+%22page%22%3A+161%7D)\n\n💡 **Tip:** Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento.\n\n¿Resuelve esto tu cuestión?",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "como se pesa?",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T17:39:18.570319"
+      }
+    ],
+    "session_id": "eroski_session_20250726_173722",
+    "timestamp_actualizacion": "2025-07-26T17:39:18.570319",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7085": {
+    "codigo_incidencia": "ER-7085",
+    "timestamp_creacion": "2025-07-26T18:19:05.122458",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-26T18:19:06.843060"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T18:19:06.843060"
+      }
+    ],
+    "session_id": "eroski_session_20250726_181857",
+    "timestamp_actualizacion": "2025-07-26T18:19:06.843060",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6493": {
+    "codigo_incidencia": "ER-6493",
+    "timestamp_creacion": "2025-07-26T20:46:02.190422",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T20:46:02.190935"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T20:46:02.190422",
+    "version_sistema": "1.0"
+  },
+  "ER-3851": {
+    "codigo_incidencia": "ER-3851",
+    "timestamp_creacion": "2025-07-26T20:46:21.925916",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Quiero hacer un backup",
+        "timestamp": "2025-07-26T20:46:23.500505"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T20:46:23.500505"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T20:46:23.500505",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-5131": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5131",
+    "timestamp_creacion": "2025-07-26T21:10:07.017939",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T21:10:07.017939"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:10:07.017939",
+    "version_sistema": "1.0"
+  },
+  "ER-7070": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7070",
+    "timestamp_creacion": "2025-07-26T21:10:10.055401",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T21:10:10.055401"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:10:10.055401",
+    "version_sistema": "1.0"
+  },
+  "ER-2226": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-2226",
+    "timestamp_creacion": "2025-07-26T21:10:24.424627",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Quiero hacer un backup",
+        "timestamp": "2025-07-26T21:10:26.128404"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T21:10:26.128404"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:10:26.128404",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7731": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7731",
+    "timestamp_creacion": "2025-07-26T21:10:31.186800",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Quiero hacer un backup",
+        "timestamp": "2025-07-26T21:10:32.548453"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T21:10:32.548453"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:10:32.548453",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-3678": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3678",
+    "timestamp_creacion": "2025-07-26T21:11:45.367234",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T21:11:45.367234"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:11:45.367234",
+    "version_sistema": "1.0"
+  },
+  "ER-3809": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3809",
+    "timestamp_creacion": "2025-07-26T21:11:48.007840",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T21:11:48.007840"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:11:48.007840",
+    "version_sistema": "1.0"
+  },
+  "ER-3039": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3039",
+    "timestamp_creacion": "2025-07-26T21:12:06.442534",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Quiero hacer un backup",
+        "timestamp": "2025-07-26T21:12:08.195793"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T21:12:08.195793"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:12:08.195793",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6028": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-6028",
+    "timestamp_creacion": "2025-07-26T21:12:13.521842",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Quiero hacer un backup",
+        "timestamp": "2025-07-26T21:12:14.755680"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T21:12:14.755680"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:12:14.755680",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-1875": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-1875",
+    "timestamp_creacion": "2025-07-26T21:19:53.206659",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-26T21:19:53.206659"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:19:53.206659",
+    "version_sistema": "1.0"
+  },
+  "ER-5119": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5119",
+    "timestamp_creacion": "2025-07-26T21:20:06.148282",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-26T21:20:07.927874"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-26T21:20:07.927874"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-26T21:20:07.927874",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-4209": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-4209",
+    "timestamp_creacion": "2025-07-27T00:46:11.787513",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T00:46:11.787513"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T00:46:11.787513",
+    "version_sistema": "1.0"
+  },
+  "ER-9830": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-9830",
+    "timestamp_creacion": "2025-07-27T00:46:34.187122",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-27T00:46:35.898789"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T00:46:35.898789"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T00:46:35.898789",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7136": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7136",
+    "timestamp_creacion": "2025-07-27T10:52:59.149604",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T10:52:59.149604"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T10:52:59.149604",
+    "version_sistema": "1.0"
+  },
+  "ER-5940": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5940",
+    "timestamp_creacion": "2025-07-27T10:53:20.251586",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T10:53:20.251586"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T10:53:20.251586",
+    "version_sistema": "1.0"
+  },
+  "ER-3193": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3193",
+    "timestamp_creacion": "2025-07-27T10:57:37.711666",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T10:57:37.711666"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T10:57:37.711666",
+    "version_sistema": "1.0"
+  },
+  "ER-1037": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-1037",
+    "timestamp_creacion": "2025-07-27T11:00:02.739543",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T11:00:02.739543"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T11:00:02.739543",
+    "version_sistema": "1.0"
+  },
+  "ER-5927": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5927",
+    "timestamp_creacion": "2025-07-27T11:00:17.347127",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-27T11:00:19.122143"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T11:00:19.122143"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T11:00:19.122143",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-3543": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3543",
+    "timestamp_creacion": "2025-07-27T11:03:15.106032",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T11:03:17.187709"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T11:03:17.187709"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T11:03:17.187709",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7598": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7598",
+    "timestamp_creacion": "2025-07-27T11:03:49.509117",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T11:03:51.461965"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T11:03:51.461965"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T11:03:51.461965",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-8085": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-8085",
+    "timestamp_creacion": "2025-07-27T11:13:36.511412",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T11:13:38.518306"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T11:13:38.518306"
+      }
+    ],
+    "session_id": "eroski_session_20250727_111322",
+    "timestamp_actualizacion": "2025-07-27T11:13:38.518306",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7305": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-7305",
+    "timestamp_creacion": "2025-07-27T11:58:28.076099",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T11:58:40.961264"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Hola, ¿puedes proporcionarme más detalles sobre tu consulta o el problema que estás teniendo con la balanza? Estaré encantado de ayudarte.",
+        "timestamp": "2025-07-27T11:58:40.973051"
+      },
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T11:58:40.973051"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T11:58:40.973051"
+      }
+    ],
+    "session_id": "eroski_session_20250727_115802",
+    "timestamp_actualizacion": "2025-07-27T11:58:40.973051",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-2018": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-2018",
+    "timestamp_creacion": "2025-07-27T12:01:33.056907",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:01:35.158068"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:01:35.158068"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120122",
+    "timestamp_actualizacion": "2025-07-27T12:01:35.158068",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-3332": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-3332",
+    "timestamp_creacion": "2025-07-27T12:03:58.905501",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:04:01.248289"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:04:01.250317"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120351",
+    "timestamp_actualizacion": "2025-07-27T12:04:01.250317",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6422": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-6422",
+    "timestamp_creacion": "2025-07-27T12:06:08.819804",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T12:06:10.866142"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:06:10.866142"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120558",
+    "timestamp_actualizacion": "2025-07-27T12:06:10.866142",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-4092": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-4092",
+    "timestamp_creacion": "2025-07-27T12:06:48.745518",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T12:06:50.921209"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:06:50.921209"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120637",
+    "timestamp_actualizacion": "2025-07-27T12:06:50.921209",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7634": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-7634",
+    "timestamp_creacion": "2025-07-27T12:07:17.655751",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T12:07:19.582136"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:07:19.582883"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120708",
+    "timestamp_actualizacion": "2025-07-27T12:07:19.582883",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7498": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-7498",
+    "timestamp_creacion": "2025-07-27T12:08:21.667167",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "la balanza no enciende",
+        "timestamp": "2025-07-27T12:08:23.655796"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:08:23.655796"
+      }
+    ],
+    "session_id": "eroski_session_20250727_120814",
+    "timestamp_actualizacion": "2025-07-27T12:08:23.655796",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-8832": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-8832",
+    "timestamp_creacion": "2025-07-27T12:22:03.000081",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:22:06.481137"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:22:06.481137"
+      }
+    ],
+    "session_id": "eroski_session_20250727_122151",
+    "timestamp_actualizacion": "2025-07-27T12:22:06.481137",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-4642": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-4642",
+    "timestamp_creacion": "2025-07-27T12:25:55.615789",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:25:57.421733"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:25:57.421733"
+      }
+    ],
+    "session_id": "eroski_session_20250727_122547",
+    "timestamp_actualizacion": "2025-07-27T12:25:57.421733",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6362": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-6362",
+    "timestamp_creacion": "2025-07-27T12:27:50.385975",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende"
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:27:52.523299"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:27:52.523299"
+      }
+    ],
+    "session_id": "eroski_session_20250727_122742",
+    "timestamp_actualizacion": "2025-07-27T12:27:52.523299",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-2313": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-2313",
+    "timestamp_creacion": "2025-07-27T12:29:34.031561",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "No enciende",
+        "timestamp": "2025-07-27T12:29:35.835103"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:29:35.835103"
+      }
+    ],
+    "session_id": "eroski_session_20250727_122926",
+    "timestamp_actualizacion": "2025-07-27T12:29:35.835103",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-6483": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-6483",
+    "timestamp_creacion": "2025-07-27T12:30:13.751686",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:30:16.770336"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:30:16.770336"
+      }
+    ],
+    "session_id": "eroski_session_20250727_123007",
+    "timestamp_actualizacion": "2025-07-27T12:30:16.770336",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-3757": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-3757",
+    "timestamp_creacion": "2025-07-27T12:35:23.114340",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "La balanza no enciende."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "no enciende",
+        "timestamp": "2025-07-27T12:35:25.095791"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:35:25.095791"
+      }
+    ],
+    "session_id": "eroski_session_20250727_123503",
+    "timestamp_actualizacion": "2025-07-27T12:35:25.095791",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-1179": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-1179",
+    "timestamp_creacion": "2025-07-27T12:44:10.539629",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere saber cómo hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hacer un backup",
+        "timestamp": "2025-07-27T12:44:12.840042"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:44:12.840042"
+      }
+    ],
+    "session_id": "eroski_session_20250727_124358",
+    "timestamp_actualizacion": "2025-07-27T12:44:12.840042",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-5654": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-5654",
+    "timestamp_creacion": "2025-07-27T12:55:38.444417",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea realizar un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-27T12:55:40.313404"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T12:55:40.313404"
+      }
+    ],
+    "session_id": "eroski_session_20250727_125531",
+    "timestamp_actualizacion": "2025-07-27T12:55:40.313404",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-3369": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-3369",
+    "timestamp_creacion": "2025-07-27T14:11:06.967294",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario quiere hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-27T14:11:08.602047"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T14:11:08.602047"
+      }
+    ],
+    "session_id": "eroski_session_20250727_141047",
+    "timestamp_actualizacion": "2025-07-27T14:11:08.602047",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-7877": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7877",
+    "timestamp_creacion": "2025-07-27T17:08:41.381307",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-27T17:08:41.381307"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T17:08:41.381307",
+    "version_sistema": "1.0"
+  },
+  "ER-5172": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5172",
+    "timestamp_creacion": "2025-07-27T17:10:59.103092",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-27T17:10:59.103092"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T17:10:59.103092",
+    "version_sistema": "1.0"
   }
 }

@@ -1,6 +1,7 @@
 import json
 import pprint
 import logging
+import os
 from typing import Any, Dict, Optional, List
 from datetime import datetime
 from langchain_core.messages import AIMessage
@@ -17,6 +18,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from app.utils.incident_manager import get_incident_manager
 from app.utils.document_link_generator import DocumentLinkGenerator
+from app.utils.multicanal import renderizar_enlace
 
 logger = logging.getLogger(__name__)
 
@@ -137,12 +139,19 @@ class OrquestadorBusquedaNode:
         self.faq_tool = faq_tool
         self.ordenar_chunks_chain = ordenar_chunks_chain
         self.agent_faq = agent_faq
-        self.link_generator = DocumentLinkGenerator()
+        
+        # Obtener URL base de variable de entorno o usar localhost por defecto
+        base_url = os.getenv("PUBLIC_URL", "http://localhost:8000")
+        self.link_generator = DocumentLinkGenerator(base_url=base_url)
+        
         self.logger = logging.getLogger(__name__)
         self.chunks_metadata = {}
+        
+        self.logger.info(f"🌐 OrquestadorBusquedaNode usando URL base: {base_url}")
 
     async def execute(self, state: EroskiState) -> dict:
         print("👹👹👹 Entra en el orquestador de búsqueda 👹👹👹")
+        print(f"🔍 Canal detectado: {state.get('channel', 'No especificado')}")
         get_incident_manager().manage_incident(state)
 
         
@@ -192,6 +201,7 @@ class OrquestadorBusquedaNode:
             if resultado_manual['results'] and rag_result.get("problem_identified"):
                 # MODIFICADO: Generar solución con enlaces
                 solucion_con_enlaces = await self._generar_solucion_con_enlaces(
+                    state,
                     rag_result['solution_content'], 
                     chunck_list
                 )
@@ -274,7 +284,7 @@ class OrquestadorBusquedaNode:
         )
 
     # NUEVO MÉTODO: Generar solución final con enlaces
-    async def _generar_solucion_con_enlaces(self, solution_content: str, chunk_id_list: List[str]) -> str:
+    async def _generar_solucion_con_enlaces(self, state: EroskiState, solution_content: str, chunk_id_list: List[str]) -> str:
         """
         Toma la solución del LLM y agrega enlaces de los chunks utilizados
         """
@@ -291,6 +301,11 @@ class OrquestadorBusquedaNode:
                 # Verificar si podemos generar enlaces
                 if self._puede_generar_enlaces(metadata):
                     try:
+                        print(f"🔍 DEBUG - Generando enlace para chunk {chunk_id}:")
+                        print(f"   Documento: {metadata['documento']['filename']}")
+                        print(f"   Página: {metadata['documento']['pagina_numero']}")
+                        print(f"   Coordenadas: {metadata['posicion']}")
+                        
                         enlaces = self.link_generator.generate_chunk_link(
                             documento_origen=metadata['documento']['filename'],
                             pagina_numero=metadata['documento']['pagina_numero'],
@@ -315,20 +330,49 @@ class OrquestadorBusquedaNode:
         solucion_final = solution_content
         
         if enlaces_chunks:
-            solucion_final += "\n\n🔗 **Referencias directas:**"
+            # Verificar el canal para adaptar el formato
+            is_whatsapp = state.get("channel") == "whatsapp"
+            print(f"🔗 Generando enlaces - Canal: {state.get('channel')} - Es WhatsApp: {is_whatsapp}")
             
-            for enlace in enlaces_chunks:
-                equipo_info = ""
-                if enlace['equipo'].get('marca'):
-                    equipo_info = f" ({enlace['equipo']['marca']} {enlace['equipo'].get('modelo', '')})"
+            if is_whatsapp:
+                # Formato simple para WhatsApp
+                solucion_final += "\n\n🔗 Referencias directas:\n"
                 
-                enlace_linea = f"""
-• 📄 [Página {enlace['page']}{equipo_info}]({enlace['enlaces']['pdf_link']})
-• 🖥️ [Ver con resaltado automático]({enlace['enlaces']['web_viewer_link']})"""
+                for enlace in enlaces_chunks:
+                    equipo_info = ""
+                    if enlace['equipo'].get('marca'):
+                        equipo_info = f" ({enlace['equipo']['marca']} {enlace['equipo'].get('modelo', '')})"
+                    
+                    # Para WhatsApp: texto y URL separados claramente
+                    #solucion_final += f"\n📄 Página {enlace['page']}{equipo_info}:\n"
+                    #solucion_final += f"{enlace['enlaces']['pdf_link']}\n"
+                    solucion_final += f"\n🖥️ Ver con resaltado:\n"
+                    solucion_final += f"{enlace['enlaces']['web_viewer_link']}\n"
                 
-                solucion_final += enlace_linea
-            
-            solucion_final += "\n\n💡 **Tip:** Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento."
+                solucion_final += "\n💡 Los enlaces con resaltado te llevan directo a la ubicación exacta."
+            else:
+                # Formato Markdown para Chainlit/Web
+                solucion_final += "\n\n🔗 Referencias directas:\n"
+                
+                for enlace in enlaces_chunks:
+                    equipo_info = ""
+                    if enlace['equipo'].get('marca'):
+                        equipo_info = f" ({enlace['equipo']['marca']} {enlace['equipo'].get('modelo', '')})"
+                    
+                    # Generar textos base
+                    #texto_pdf = f"📄 Página {enlace['page']}{equipo_info}"
+                    texto_pdf = f"📄 {equipo_info}"
+                    texto_viewer = "🖥️ Ver con resaltado automático"
+                    
+                    # Aplicar el helper según canal (esto devuelve formato Markdown)
+                    linea_pdf = renderizar_enlace(state, texto_pdf, enlace['enlaces']['pdf_link'])
+                    linea_viewer = renderizar_enlace(state, texto_viewer, enlace['enlaces']['web_viewer_link'])
+                    
+                    # Agregar al mensaje final
+                    #solucion_final += f"• {linea_pdf}\n• {linea_viewer}\n"
+                    solucion_final += f"• Página: {enlace['page']} 👉 {linea_viewer}\n"
+                
+                solucion_final += f"• 📄 descargar manual {linea_pdf}\n\n💡 Tip: Los enlaces con resaltado te llevarán directamente a la ubicación exacta en el documento."
         
         return solucion_final
 

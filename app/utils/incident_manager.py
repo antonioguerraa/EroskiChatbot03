@@ -167,6 +167,7 @@ class IncidentManager:
         
         return {
             # Identificación
+            "channel": state.get("channel", ""),
             "codigo_incidencia": incident_id,
             "timestamp_creacion": now.isoformat(),
             "estado": IncidentStatus.EN_PROGRESO,

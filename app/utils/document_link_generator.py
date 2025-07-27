@@ -236,6 +236,10 @@ class DocumentLinkGenerator:
                 'page': pagina_numero
             }
             
+            logger.info(f"🎯 DEBUG - DocumentLinkGenerator para chunk {chunk_id}:")
+            logger.info(f"   Coordenadas originales: {chunk_coordinates}")
+            logger.info(f"   Highlight data: {highlight_data}")
+            
             # Enlace web viewer con resaltado personalizado
             highlight_params = {
                 'page': pagina_numero,
@@ -243,6 +247,8 @@ class DocumentLinkGenerator:
             }
             
             web_viewer_link = f"{self.base_url}/viewer/{doc_name_encoded}?{urlencode(highlight_params)}"
+            
+            logger.info(f"   URL generada: {web_viewer_link}")
             
             result = {
                 'pdf_link': pdf_link,

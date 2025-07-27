@@ -18,7 +18,7 @@ PRINCIPIOS DE DISEÑO:
 - Fácil serialización y persistencia
 """
 
-from typing import TypedDict, Optional, Any, Dict
+from typing import TypedDict, Optional, Any, Dict, Literal
 from typing import Annotated, List
 from langchain_core.messages import BaseMessage
 from datetime import datetime
@@ -77,6 +77,10 @@ class EroskiState(TypedDict, total=False):
     - Compatible con LangGraph checkpointer
     """
     
+    # ========== INTERFAZ
+    channel: Literal["whatsapp", "chainlit", "web"]
+
+
     # ========== ESTADO DEL SISTEMA
     busqueda_faq: bool                     # Si se está realizando una búsqueda en FAQ
     busqueda_manual: bool                  # Si se está realizando una búsqueda por manual
@@ -232,6 +236,7 @@ def create_initial_eroski_state(
     now = datetime.now()
     
     return EroskiState(
+        channel="chainlit",
         max_intentos_identificacion = 10, # Número máximo de intentos para identificar al usuario
         intento_identificacion = 0,     # Número de intentos para identificar al usuario
         incident_info_adicional_completa = True,

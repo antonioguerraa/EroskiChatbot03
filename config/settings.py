@@ -214,10 +214,14 @@ class Settings(BaseSettings):
         self.app = ApplicationSettings()
         self.workflow = WorkflowSettings()
         self.logging = LoggingSettings()
-        self.chainlit = ChainlitSettings()
         self.security = SecuritySettings()
+        
+        # Cargar ChainlitSettings solo si aplica
+        if self.channel == "chainlit":
+            self.chainlit = ChainlitSettings()
     
     # Declarar los campos como Optional para evitar conflictos
+    channel: Literal["chainlit", "whatsapp"] = "chainlit"
     database: Optional[DatabaseSettings] = None
     llm: Optional[LLMSettings] = None
     app: Optional[ApplicationSettings] = None

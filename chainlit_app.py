@@ -11,7 +11,7 @@ import os
 import sys
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 
 import chainlit as cl
 from langchain_core.messages import AIMessage, HumanMessage
@@ -30,6 +30,8 @@ from app.nodes.orquestador_busqueda_node import orquestador_busqueda_node
 from app.nodes.finalize_node import finalize_node
 from app.nodes.incident_info_adicional_node import recoger_datos_adicionales_node
 from langgraph.graph import StateGraph, END
+from app.graphs.eroski_graph import build_eroski_graph
+
 
 # Configuración de logging
 logging.basicConfig(
@@ -39,6 +41,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Configuración de autenticación
+@cl.password_auth_callback
+def auth_callback(username: str, password: str) -> Optional[cl.User]:
+    """
+    Callback de autenticación para Chainlit.
+    Verifica las credenciales del usuario.
+    """
+    # Obtener credenciales del entorno o usar valores por defecto
+    # En producción, estas credenciales deberían estar en una base de datos segura
+    valid_users = {
+        os.getenv("CHAINLIT_USER", "admin"): os.getenv("CHAINLIT_PASSWORD", "eroski2024"),
+        "supervisor": "eroski_supervisor_2024",
+        "operador": "eroski_operador_2024"
+    }
+    
+    # Verificar credenciales
+    if username in valid_users and valid_users[username] == password:
+        logger.info(f"✅ Usuario autenticado: {username}")
+        return cl.User(
+            identifier=username,
+            metadata={"role": "admin" if username == "admin" else "user"}
+        )
+    else:
+        logger.warning(f"❌ Intento de login fallido para usuario: {username}")
+        return None
+
 class EroskiChatbot:
     """
     Chatbot principal para Eroski basado en LangGraph
@@ -46,7 +74,9 @@ class EroskiChatbot:
     
     def __init__(self):
         """Inicializar el chatbot"""
-        self.graph = self._build_graph()
+        #self.graph = self.build_graph()
+        self.graph = build_eroski_graph()
+
         
         logger.info("🤖 Chatbot Eroski inicializado")
     
@@ -182,7 +212,9 @@ class EroskiChatbot:
  
     def create_new_session(self, session_id: str) -> EroskiState:
         """Crear nueva sesión con estado inicial"""
-        return create_initial_eroski_state(session_id=session_id)
+        initial_state = create_initial_eroski_state(session_id=session_id)
+        initial_state["channel"] = "chainlit"
+        return initial_state
     
     def create_new_session_kk(self) -> EroskiState:
         self.session_counter += 1
@@ -240,32 +272,31 @@ chatbot = EroskiChatbot()
 @cl.on_chat_start
 async def start():
     """Inicializar nueva sesión de chat"""
+    # Obtener usuario autenticado
+    user = cl.user_session.get("user")
+    
     # Generar ID de sesión único
     session_id = f"eroski_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     # Crear estado inicial usando tu función existente
     initial_state = chatbot.create_new_session(session_id)
     
+    # Guardar información del usuario autenticado en el estado
+    if user:
+        initial_state["chainlit_user"] = user.identifier
+        initial_state["user_role"] = user.metadata.get("role", "user")
+    
     # Guardar estado en la sesión de Chainlit
     cl.user_session.set("eroski_state", initial_state)
     cl.user_session.set("session_id", session_id)
     
-    logger.info(f"🚀 Nueva sesión iniciada: {session_id}")
+    logger.info(f"🚀 Nueva sesión iniciada: {session_id} - Usuario: {user.identifier if user else 'Unknown'}")
     
-    # Mensaje de bienvenida
-    welcome_message = """¡Hola! 👋 
+    # Mensaje de bienvenida personalizado
+    user_name = user.identifier if user else "Usuario"
+    welcome_message = f"""¡Hola {user_name}! 👋 
 
-Soy el **Asistente de Incidencias de Eroski**. Estoy aquí para ayudarte con cualquier problema técnico o incidencia que puedas tener en tu tienda.
-
-**¿Cómo puedo ayudarte hoy?**
-
-Por ejemplo, puedes contarme:
-- Problemas con equipos (TPV, impresoras, escáneres...)
-- Incidencias de software o sistemas
-- Problemas de red o conectividad
-- Cualquier otra incidencia técnica
-
-Para empezar, necesitaré identificarte. Puedes proporcionarme tu email corporativo o ID de empleado."""
+Soy el **Asistente de Incidencias de Eroski**. Para ayudarte necestio que me proporciones tu nombre, apellido y la tienda y sección del incidente"""
 
     await cl.Message(content=welcome_message).send()
     
@@ -323,6 +354,8 @@ async def main(message: cl.Message):
                 debug_info = f"""
                    
                 
+                    - Usuario Chainlit: `{updated_state.get('chainlit_user', 'None')}`  
+                    - Rol: `{updated_state.get('user_role', 'None')}`  
                     - Sesión: `{session_id}`  
                     - Nodo actual: `{updated_state.get('current_node', 'unknown')}`  
                     - Intentos de identificación: `{updated_state.get('intento_identificacion', 0)}`  

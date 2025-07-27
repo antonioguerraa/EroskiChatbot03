@@ -1,7 +1,3 @@
-# =====================================================
-# TEMPLATE HTML: templates/pdf_viewer.html
-# =====================================================
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -184,18 +180,6 @@
 <body>
     <div class="header">
         <h1>{{ document_name }}</h1>
-        <div class="breadcrumb">
-            📁 Documentación Técnica › 🔧 {{ equipment_type }} › 📋 {{ brand }} {{ model }}
-        </div>
-        
-        {% if chunk_id %}
-        <div class="highlight-info">
-            <strong>Chunk resaltado:</strong> {{ chunk_id }}
-            {% if highlight_data %}
-            <br><small>Coordenadas: ({{ "%.1f"|format(highlight_data.x) }}, {{ "%.1f"|format(highlight_data.y) }})</small>
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
     
     <div id="pdf-container">
@@ -290,6 +274,11 @@
                 // Hacer container relativo para posicionamiento absoluto
                 this.container.style.position = 'relative';
                 
+                // IMPORTANTE: Hacer que el canvas tenga posición relativa también
+                if (this.canvas) {
+                    this.canvas.style.position = 'relative';
+                }
+                
                 const highlights = [];
                 
                 // Agregar highlight individual
@@ -302,6 +291,7 @@
                     highlights.push(...multiHighlightData.filter(h => h.page === this.pageNum));
                 }
                 
+                // Volver a lo básico mientras diagnosticamos
                 highlights.forEach((highlight, index) => {
                     if (highlight.page === this.pageNum) {
                         this.createHighlightElement(highlight, viewport, index);
@@ -309,14 +299,42 @@
                 });
             }
             
+            
             createHighlightElement(highlight, viewport, index) {
                 const element = document.createElement('div');
                 
+                // DEBUG: Log de coordenadas
+                console.log('🎯 DEBUG Highlight:', {
+                    original: highlight,
+                    viewport: { width: viewport.width, height: viewport.height },
+                    scale: this.scale
+                });
+                
                 // Convertir coordenadas PDF a coordenadas del canvas
+                // IMPORTANTE: Las coordenadas PDF tienen origen en esquina inferior izquierda
+                // HTML/Canvas tiene origen en esquina superior izquierda
+                
+                // BÁSICO: usar coordenadas simples
                 const x = highlight.x * this.scale;
-                const y = (viewport.height - highlight.y - highlight.height) * this.scale;
+                
+                
+                // Usar option2 que funcionaba
+                const y = highlight.y * this.scale;
+                
+                // Simplificar: dimensiones básicas
                 const width = highlight.width * this.scale;
                 const height = highlight.height * this.scale;
+                
+                console.log('🎯 Coordenadas básicas:', { 
+                    x, y, width, height,
+                    original_x: highlight.x,
+                    original_y: highlight.y,
+                    original_width: highlight.width,
+                    original_height: highlight.height,
+                    scale: this.scale,
+                    viewport_width: viewport.width,
+                    viewport_height: viewport.height
+                });
                 
                 // Estilos del resaltado
                 element.className = 'highlight-overlay';

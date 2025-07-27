@@ -235,22 +235,56 @@ async def test_highlight(document_name: str):
     URL de prueba con resaltado de ejemplo
     """
     
-    # Coordenadas de ejemplo
-    test_highlight = {
-        "x": 100,
-        "y": 200,
-        "width": 300,
-        "height": 20,
-        "color": "rgba(255, 255, 0, 0.5)",
-        "chunk_id": "test_chunk_001"
-    }
+    # Coordenadas de ejemplo (varias pruebas)
+    test_highlights = [
+        {
+            "name": "Esquina superior izquierda",
+            "data": {
+                "x": 50,
+                "y": 50,
+                "width": 200,
+                "height": 30,
+                "color": "rgba(255, 0, 0, 0.5)",
+                "chunk_id": "test_esquina_superior"
+            }
+        },
+        {
+            "name": "Centro de la página",
+            "data": {
+                "x": 200,
+                "y": 400,
+                "width": 300,
+                "height": 25,
+                "color": "rgba(0, 255, 0, 0.5)",
+                "chunk_id": "test_centro"
+            }
+        },
+        {
+            "name": "Parte inferior",
+            "data": {
+                "x": 100,
+                "y": 700,
+                "width": 400,
+                "height": 20,
+                "color": "rgba(0, 0, 255, 0.5)",
+                "chunk_id": "test_inferior"
+            }
+        }
+    ]
     
-    highlight_json = json.dumps(test_highlight)
+    test_urls = []
+    for test in test_highlights:
+        highlight_json = json.dumps(test["data"])
+        test_urls.append({
+            "name": test["name"],
+            "url": f"/viewer/{document_name}?page=1&highlight={highlight_json}",
+            "coordinates": test["data"]
+        })
     
     return {
-        "message": "URL de prueba generada",
-        "test_url": f"/viewer/{document_name}?page=1&highlight={highlight_json}",
-        "highlight_data": test_highlight
+        "message": "URLs de prueba generadas",
+        "document": document_name,
+        "test_urls": test_urls
     }
 
 # Manejo de errores

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(del \"C:\\Users\\Javier\\Proyectos\\EroskiChatBotv03\\chainlit_config.py\")",
+      "Bash(pip show:*)",
+      "Bash(uv pip show:*)",
+      "WebFetch(domain:docs.chainlit.io)",
+      "Bash(copy logo_devol.png logo_dark.png)",
+      "Bash(copy logo_devol.png logo_light.png)",
+      "Bash(copy logo_devol.png favicon.png)",
+      "Bash(cp:*)",
+      "Bash(python tests/test_multicanal_links.py)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": []
+  }
+}

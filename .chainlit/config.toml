@@ -15,6 +15,13 @@ show_readme_as_default = false
 # Tema por defecto (light/dark)
 default_theme = "light"
 
+# CSS personalizado
+css = "/public/eroski-theme.css"
+
+# Imagen de fondo para la página de login (opcional)
+# login_page_image = "/public/background.jpg"
+# login_page_image_filter = "brightness-50"
+
 # Configuraciones del chat
 [features]
 # Habilitar/deshabilitar diferentes funcionalidades
