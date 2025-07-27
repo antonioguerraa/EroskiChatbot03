@@ -271,13 +271,12 @@
             }
             
             addHighlights(viewport) {
+                // Limpiar highlights anteriores antes de agregar nuevos
+                const existingHighlights = this.container.querySelectorAll('.highlight-overlay');
+                existingHighlights.forEach(el => el.remove());
+                
                 // Hacer container relativo para posicionamiento absoluto
                 this.container.style.position = 'relative';
-                
-                // IMPORTANTE: Hacer que el canvas tenga posición relativa también
-                if (this.canvas) {
-                    this.canvas.style.position = 'relative';
-                }
                 
                 const highlights = [];
                 

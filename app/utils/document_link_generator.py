@@ -241,9 +241,11 @@ class DocumentLinkGenerator:
             logger.info(f"   Highlight data: {highlight_data}")
             
             # Enlace web viewer con resaltado personalizado
+            # IMPORTANTE: usar separators para evitar espacios en el JSON
+            highlight_json = json.dumps(highlight_data, separators=(',', ':'))
             highlight_params = {
                 'page': pagina_numero,
-                'highlight': json.dumps(highlight_data)
+                'highlight': highlight_json
             }
             
             web_viewer_link = f"{self.base_url}/viewer/{doc_name_encoded}?{urlencode(highlight_params)}"
@@ -323,9 +325,10 @@ class DocumentLinkGenerator:
             
             # Generar parámetros
             doc_name_encoded = quote(documento_origen, safe='')
+            # IMPORTANTE: usar separators para evitar espacios en el JSON
             multi_highlight_params = {
                 'page': base_page,
-                'multi_highlight': json.dumps(highlights)
+                'multi_highlight': json.dumps(highlights, separators=(',', ':'))
             }
             
             result = f"{self.base_url}/viewer/{doc_name_encoded}?{urlencode(multi_highlight_params)}"

@@ -2054,5 +2054,340 @@
     "session_id": "34660577036",
     "timestamp_actualizacion": "2025-07-27T17:10:59.103092",
     "version_sistema": "1.0"
+  },
+  "ER-6442": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-6442",
+    "timestamp_creacion": "2025-07-27T17:20:09.238577",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T17:20:09.238577"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T17:20:09.238577",
+    "version_sistema": "1.0"
+  },
+  "ER-3260": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-3260",
+    "timestamp_creacion": "2025-07-27T17:27:02.506598",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T17:27:02.506598"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T17:27:02.506598",
+    "version_sistema": "1.0"
+  },
+  "ER-2642": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-2642",
+    "timestamp_creacion": "2025-07-27T17:35:10.932018",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Hola",
+        "timestamp": "2025-07-27T17:35:10.932018"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T17:35:10.932018",
+    "version_sistema": "1.0"
+  },
+  "ER-8575": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-8575",
+    "timestamp_creacion": "2025-07-27T18:02:56.764079",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario desea saber cómo hacer un backup en la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "quiero hacer un backup",
+        "timestamp": "2025-07-27T18:02:58.562276"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-27T18:02:58.562276"
+      }
+    ],
+    "session_id": "eroski_session_20250727_180015",
+    "timestamp_actualizacion": "2025-07-27T18:02:58.562276",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
+  },
+  "ER-4640": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-4640",
+    "timestamp_creacion": "2025-07-27T23:06:23.383435",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:06:23.383435"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:06:23.383435",
+    "version_sistema": "1.0"
+  },
+  "ER-7323": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-7323",
+    "timestamp_creacion": "2025-07-27T23:07:22.431818",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:07:22.431818"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:07:22.431818",
+    "version_sistema": "1.0"
+  },
+  "ER-5856": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-5856",
+    "timestamp_creacion": "2025-07-27T23:11:45.153873",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:11:45.153873"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:11:45.153873",
+    "version_sistema": "1.0"
+  },
+  "ER-1973": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-1973",
+    "timestamp_creacion": "2025-07-27T23:11:58.032732",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:11:58.032732"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:11:58.032732",
+    "version_sistema": "1.0"
+  },
+  "ER-9390": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-9390",
+    "timestamp_creacion": "2025-07-27T23:12:44.107347",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:12:44.107347"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:12:44.107347",
+    "version_sistema": "1.0"
+  },
+  "ER-4746": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-4746",
+    "timestamp_creacion": "2025-07-27T23:14:24.614979",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:14:24.614979"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:14:24.614979",
+    "version_sistema": "1.0"
+  },
+  "ER-1388": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-1388",
+    "timestamp_creacion": "2025-07-27T23:19:36.950317",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:19:36.950317"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:19:36.950317",
+    "version_sistema": "1.0"
+  },
+  "ER-8302": {
+    "channel": "whatsapp",
+    "codigo_incidencia": "ER-8302",
+    "timestamp_creacion": "2025-07-27T23:20:08.141142",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "hola",
+        "timestamp": "2025-07-27T23:20:08.141142"
+      }
+    ],
+    "session_id": "34660577036",
+    "timestamp_actualizacion": "2025-07-27T23:20:08.141142",
+    "version_sistema": "1.0"
   }
 }
