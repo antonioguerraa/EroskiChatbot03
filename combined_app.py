@@ -7,7 +7,7 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
@@ -15,7 +15,6 @@ import json
 from urllib.parse import unquote
 import logging
 import uvicorn
-from chainlit.utils import mount_chainlit
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -132,7 +131,7 @@ async def handle_webhook(request: Request):
         )
 
 # =====================================================
-# PDF Server Endpoints
+# PDF Server Endpoints (PUBLIC - NO AUTH REQUIRED)
 # =====================================================
 
 @app.get("/pdf", response_class=HTMLResponse)
@@ -283,6 +282,18 @@ async def serve_pdf(filename: str):
         }
     )
 
+# Legacy routes for backward compatibility
+@app.get("/docs/{filename}")
+async def legacy_serve_pdf(filename: str):
+    """Legacy route for serving PDFs - redirects to new route"""
+    return RedirectResponse(url=f"/pdf/file/{filename}")
+
+@app.get("/viewer/{filename}")
+async def legacy_view_pdf(request: Request, filename: str):
+    """Legacy route for viewing PDFs - redirects to new route"""
+    query_string = str(request.url).split('?', 1)[1] if '?' in str(request.url) else ''
+    return RedirectResponse(url=f"/pdf/view/{filename}?{query_string}")
+
 # =====================================================
 # Main API Endpoints
 # =====================================================
@@ -316,7 +327,8 @@ async def test():
         }
     }
 
-# Mount Chainlit app
+# Mount Chainlit app LAST so its auth doesn't affect other routes
+from chainlit.utils import mount_chainlit
 mount_chainlit(app=app, target="chainlit_app.py", path="/chat")
 
 if __name__ == "__main__":
