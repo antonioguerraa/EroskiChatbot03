@@ -1,0 +1,60 @@
+services:
+  # Web service for the Chainlit app
+  - type: web
+    name: eroski-chatbot
+    runtime: python
+    buildCommand: "chmod +x render_build.sh && ./render_build.sh"
+    startCommand: "python -m chainlit run chainlit_app.py --host 0.0.0.0 --port $PORT --no-browser"
+    envVars:
+      # Python version
+      - key: PYTHON_VERSION
+        value: "3.11"
+      
+      # Database configuration (Supabase)
+      - key: DB_HOST
+        sync: false  # Set in Render dashboard
+      - key: DB_PORT
+        value: "6543"  # Supabase pooler port
+      - key: DB_NAME
+        value: "postgres"
+      - key: DB_USER
+        value: "postgres"
+      - key: DB_PASSWORD
+        sync: false  # Set in Render dashboard
+      - key: SUPABASE_DB_STRING
+        sync: false  # Set in Render dashboard
+      - key: SUPABASE_POOLER_STRING
+        sync: false  # Set in Render dashboard
+      - key: USE_SUPABASE_POOLER
+        value: "true"
+      
+      # Azure OpenAI configuration
+      - key: LLM_PROVIDER
+        value: "azure_openai"
+      - key: LLM_AZURE_OPENAI_API_KEY
+        sync: false  # Set in Render dashboard
+      - key: LLM_AZURE_OPENAI_ENDPOINT
+        sync: false  # Set in Render dashboard
+      - key: LLM_AZURE_DEPLOYMENT_NAME
+        sync: false  # Set in Render dashboard
+      - key: LLM_AZURE_API_VERSION
+        value: "2024-02-15-preview"
+      - key: LLM_AZURE_EMBEDDING_DEPLOYMENT
+        sync: false  # Set in Render dashboard
+      
+      # App configuration
+      - key: INCIDENT_MAX_SOLUTION_ATTEMPTS
+        value: "3"
+      - key: INCIDENT_SESSION_TIMEOUT_MINUTES
+        value: "30"
+      - key: PUBLIC_URL
+        sync: false  # Will be set to Render URL
+      
+      # Chainlit configuration
+      - key: CHAINLIT_AUTH_SECRET
+        generateValue: true  # Render will generate a secret
+      - key: CHAINLIT_URL
+        sync: false  # Will be set to Render URL
+      
+    # Auto-deploy when pushing to the specified branch
+    autoDeploy: false  # Set to true if you want automatic deploys
