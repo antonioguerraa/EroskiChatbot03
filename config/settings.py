@@ -11,6 +11,9 @@ from typing import Optional, Literal
 from pydantic import ConfigDict
 from pathlib import Path
 import os
+import logging
+
+logger = logging.getLogger("Settings")
 
 # 🔥 SOLUCIÓN: Cargar .env manualmente con prioridad
 def load_env_with_override():
@@ -56,13 +59,32 @@ class DatabaseSettings(BaseSettings):
     @property
     def connection_string(self) -> str:
         """Generar string de conexión PostgreSQL"""
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        # Check if we should use Supabase pooler or direct connection
+        supabase_db_string = os.getenv('SUPABASE_DB_STRING')
+        supabase_pooler_string = os.getenv('SUPABASE_POOLER_STRING')
+        use_pooler = os.getenv('USE_SUPABASE_POOLER', 'false').lower() == 'true'
+        
+        # If Supabase strings are available, use them
+        if supabase_db_string and not use_pooler:
+            logger.info("🌐 Using Supabase direct connection")
+            return supabase_db_string
+        elif supabase_pooler_string and use_pooler:
+            logger.info("🌐 Using Supabase pooler connection")
+            return supabase_pooler_string
+        else:
+            # Fallback to constructed connection string
+            return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
     
     @property
     def test_connection_string(self) -> str:
         """String de conexión para tests"""
-        test_db_name = f"test_{self.name}"
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{test_db_name}"
+        # For Supabase, we can't create test databases, so use the main one
+        if 'supabase.co' in self.host:
+            logger.warning("⚠️ Using main Supabase database for tests (can't create test DBs)")
+            return self.connection_string
+        else:
+            test_db_name = f"test_{self.name}"
+            return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{test_db_name}"
 
 class LLMSettings(BaseSettings):
     """Configuración de LLM con soporte para Azure OpenAI"""
@@ -197,13 +219,31 @@ class SecuritySettings(BaseSettings):
     
     model_config = ConfigDict(extra="ignore", env_prefix="SECURITY_")
 
+class SupabaseSettings(BaseSettings):
+    """Configuración específica de Supabase"""
+    
+    url: Optional[str] = None
+    service_role: Optional[str] = None
+    db_string: Optional[str] = None
+    pooler_string: Optional[str] = None
+    project_ref: Optional[str] = None
+    
+    model_config = ConfigDict(extra="ignore", env_prefix="SUPABASE_")
+    
+    @property
+    def is_configured(self) -> bool:
+        """Verificar si Supabase está configurado"""
+        return bool(self.db_string or self.pooler_string)
+
 class Settings(BaseSettings):
     """Configuración principal que agrupa todas las demás"""
     
     def __init__(self, **kwargs):
         # 🔥 VERIFICAR que .env se cargó antes de inicializar
-        if os.getenv('DB_NAME') != 'chatbot_db':
-            print(f"⚠️ ADVERTENCIA: DB_NAME = {os.getenv('DB_NAME')} (debería ser chatbot_db)")
+        # For Supabase, DB_NAME should be 'postgres'
+        expected_db_name = 'postgres' if os.getenv('SUPABASE_DB_STRING') else 'chatbot_db'
+        if os.getenv('DB_NAME') != expected_db_name:
+            print(f"⚠️ ADVERTENCIA: DB_NAME = {os.getenv('DB_NAME')} (debería ser {expected_db_name})")
             print("💡 Revisa tu archivo .env")
         
         super().__init__(**kwargs)
@@ -215,6 +255,7 @@ class Settings(BaseSettings):
         self.workflow = WorkflowSettings()
         self.logging = LoggingSettings()
         self.security = SecuritySettings()
+        self.supabase = SupabaseSettings()
         
         # Cargar ChainlitSettings solo si aplica
         if self.channel == "chainlit":
@@ -229,6 +270,7 @@ class Settings(BaseSettings):
     logging: Optional[LoggingSettings] = None
     chainlit: Optional[ChainlitSettings] = None
     security: Optional[SecuritySettings] = None
+    supabase: Optional[SupabaseSettings] = None
     
     # 🔥 CAMBIO: Configurar para que .env tenga prioridad
     model_config = ConfigDict(
@@ -242,9 +284,17 @@ class Settings(BaseSettings):
         """Validar toda la configuración y retornar errores"""
         errors = []
         
-        # Validar que DB_NAME sea correcto
-        if self.database.name != 'chatbot_db':
-            errors.append(f"DB_NAME incorrecto: {self.database.name} (debería ser chatbot_db)")
+        # Validar que DB_NAME sea correcto (postgres para Supabase, chatbot_db para local)
+        expected_db_name = 'postgres' if self.supabase.is_configured else 'chatbot_db'
+        if self.database.name != expected_db_name:
+            errors.append(f"DB_NAME incorrecto: {self.database.name} (debería ser {expected_db_name})")
+        
+        # Validar configuración de Supabase si está habilitada
+        if self.supabase.is_configured:
+            if not self.supabase.db_string and not self.supabase.pooler_string:
+                errors.append("Supabase configurado pero falta connection string")
+            if self.database.host == 'localhost':
+                errors.append("Supabase configurado pero DB_HOST sigue siendo localhost")
         
         # Validar configuración de Azure
         try:
@@ -259,8 +309,8 @@ class Settings(BaseSettings):
             errors.append(f"No se puede crear directorio de logs: {e}")
         
         # Validar configuración de BD en producción
-        if not self.app.is_development and self.database.password == "password":
-            errors.append("Usar password por defecto en producción es inseguro")
+        if not self.app.is_development and self.database.password == "" and not self.supabase.is_configured:
+            errors.append("Usar password vacío en producción es inseguro")
         
         return errors
 

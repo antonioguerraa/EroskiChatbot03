@@ -29,6 +29,7 @@ from collections import defaultdict
 
 
 from config.settings import get_settings
+from langchain_openai import AzureOpenAIEmbeddings
 from app.utils.llm.providers import get_vectorizer
 
 logger = logging.getLogger(__name__)
@@ -378,21 +379,41 @@ class HybridRAGSearcher:
         """Obtiene pool de conexiones asíncrono"""
         if self._connection_pool is None:
             try:
-                self._connection_pool = await asyncpg.create_pool(
-                    host=self.settings.database.host,
-                    database=self.settings.database.name,
-                    user=self.settings.database.user,
-                    password=self.settings.database.password or "",
-                    port=self.settings.database.port,
-                    min_size=3,
-                    max_size=15,
-                    command_timeout=45,
-                    server_settings={
-                        'application_name': 'eroski_rag_searcher',
-                        'statement_timeout': '30s'
-                    }
-                )
-                logger.info("✅ Pool de conexiones RAG creado")
+                # Use connection string for Supabase compatibility
+                connection_string = self.settings.database.connection_string
+                
+                if 'supabase.co' in connection_string or 'pooler.supabase.com' in connection_string:
+                    # Supabase pooler connection
+                    self._connection_pool = await asyncpg.create_pool(
+                        connection_string,
+                        min_size=3,
+                        max_size=15,
+                        command_timeout=45,
+                        statement_cache_size=0,  # Disable for pooler compatibility
+                        server_settings={
+                            'application_name': 'eroski_rag_searcher',
+                            'statement_timeout': '30s',
+                            'jit': 'off'
+                        }
+                    )
+                    logger.info("✅ Pool de conexiones RAG creado (Supabase)")
+                else:
+                    # Local connection
+                    self._connection_pool = await asyncpg.create_pool(
+                        host=self.settings.database.host,
+                        database=self.settings.database.name,
+                        user=self.settings.database.user,
+                        password=self.settings.database.password or "",
+                        port=self.settings.database.port,
+                        min_size=3,
+                        max_size=15,
+                        command_timeout=45,
+                        server_settings={
+                            'application_name': 'eroski_rag_searcher',
+                            'statement_timeout': '30s'
+                        }
+                    )
+                    logger.info("✅ Pool de conexiones RAG creado")
             except Exception as e:
                 logger.error(f"❌ Error creando pool: {e}")
                 raise
@@ -556,7 +577,7 @@ class HybridRAGSearcher:
         """Búsqueda vectorial individual optimizada"""
         try:
             # Generar embedding
-            query_embedding = self.vectorizer.embed(query)
+            query_embedding = await self.vectorizer.aembed(query)
             query_vector = str(query_embedding)
             
             # SQL optimizada con índices
@@ -967,7 +988,7 @@ class OptimizedEroskiKnowledgeBase:
     
     def __init__(self):
         self.settings = get_settings()
-        self.vectorizer = get_vectorizer()
+        self.vectorizer = get_async_vectorizer()
         self.searcher = HybridRAGSearcher(self.settings, self.vectorizer)
         
         # Configuración de resultados
@@ -1211,7 +1232,7 @@ class RAGFeedbackSystem:
                             satisfaction_score: float):
         """Registra feedback del usuario en la base de datos"""
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
             await conn.execute("""
@@ -1228,7 +1249,10 @@ class RAGFeedbackSystem:
         except Exception as e:
             logger.error(f"Error guardando feedback: {e}")
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
     
     def _build_connection_string(self) -> str:
         """Construye string de conexión"""
@@ -1392,6 +1416,58 @@ class MetadataSearchResult:
 # GENERADOR DE ENLACES A DOCUMENTOS
 # =====================================================
 
+# Async vectorizer wrapper for improved_eroski_knowledge_base.py
+from typing import List
+from langchain_openai import AzureOpenAIEmbeddings
+import os
+from config.settings import get_settings
+
+class AsyncEmbeddingVectorizer:
+    """Async wrapper for embeddings generation"""
+    
+    def __init__(self):
+        settings = get_settings()
+        self.embeddings = AzureOpenAIEmbeddings(
+            azure_endpoint=settings.llm.azure_openai_endpoint,
+            api_key=settings.llm.azure_openai_api_key,
+            azure_deployment=os.getenv('LLM_AZURE_EMBEDDING_DEPLOYMENT', 'text-embedding-ada-002'),
+            api_version=settings.llm.azure_api_version
+        )
+    
+    async def aembed(self, text: str) -> List[float]:
+        """Generate embedding asynchronously"""
+        result = await self.embeddings.aembed_query(text)
+        # Ensure it's a list of floats
+        if isinstance(result, list):
+            return result
+        return list(result)
+    
+    def embed(self, text: str) -> List[float]:
+        """Sync method for backward compatibility - runs async in sync context"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self.aembed(text))
+                    return future.result()
+            else:
+                return loop.run_until_complete(self.aembed(text))
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(self.aembed(text))
+
+_async_vectorizer = None
+
+def get_async_vectorizer():
+    global _async_vectorizer
+    if _async_vectorizer is None:
+        _async_vectorizer = AsyncEmbeddingVectorizer()
+    return _async_vectorizer
+
+
 class DocumentLinkGenerator:
     """Genera enlaces directos a ubicaciones específicas en PDFs"""
     
@@ -1433,8 +1509,9 @@ class MetadataEnhancedRAGSearcher:
     
     def __init__(self):
         self.settings = get_settings()
-        self.vectorizer = get_vectorizer()
+        self.vectorizer = get_async_vectorizer()
         self.link_generator = DocumentLinkGenerator()
+        self.min_similarity_threshold = 0.4  # Add missing threshold
         
     async def search_with_metadata_filters(
         self,
@@ -1452,20 +1529,19 @@ class MetadataEnhancedRAGSearcher:
         Búsqueda avanzada con filtros de metadatos
         """
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
             # 1. Generar embeddings de la consulta
-            if use_metadata_embedding:
-                # Crear consulta enriquecida con contexto de filtros
-                enriched_query = self._create_enriched_query(
-                    query, tipo_equipo, marca, modelo
-                )
-                query_embedding = self.vectorizer.embed(enriched_query)
-                embedding_column = "chunk_embedding_with_metadata"
-            else:
-                query_embedding = self.vectorizer.embed(query)
-                embedding_column = "chunk_embedding"
+            # Always use chunk_embedding for now (chunk_embedding_with_metadata may have different vectors)
+            query_embedding = await self.vectorizer.aembed(query)
+            embedding_column = "chunk_embedding"
+            
+            # Original logic commented out for reference:
+            # if use_metadata_embedding:
+            #     enriched_query = self._create_enriched_query(query, tipo_equipo, marca, modelo)
+            #     query_embedding = await self.vectorizer.aembed(enriched_query)
+            #     embedding_column = "chunk_embedding_with_metadata"
             
             # 2. Construir SQL con filtros
             base_sql = f"""
@@ -1513,7 +1589,7 @@ class MetadataEnhancedRAGSearcher:
             
             param_count += 1
             base_sql += f" AND 1 - ({embedding_column} <=> $1::vector) >= ${param_count}"
-            params.append(0.5)
+            params.append(0.4)  # Lowered from 0.5 for better recall
             
             # 5. Ordenar y limitar
             param_count += 1
@@ -1573,7 +1649,10 @@ class MetadataEnhancedRAGSearcher:
             return reranked_results[:top_k]
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
     
     def _create_enriched_query(
         self, 
@@ -1756,10 +1835,10 @@ class MetadataEnhancedRAGSearcher:
     ) -> List[MetadataSearchResult]:
         """Búsqueda dentro de un documento o sección específica"""
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
-            query_embedding = self.vectorizer.embed(query)
+            query_embedding = await self.vectorizer.aembed(query)
             
             base_sql = """
                 SELECT 
@@ -1822,11 +1901,14 @@ class MetadataEnhancedRAGSearcher:
             return search_results
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
     
     def _build_connection_string(self) -> str:
-        """Construye string de conexión"""
-        return f"postgresql://{self.settings.database.user}:{self.settings.database.password or ''}@{self.settings.database.host}:{self.settings.database.port}/{self.settings.database.name}"
+        """Construye string de conexión usando la configuración correcta de Supabase"""
+        return self.settings.database.connection_string
 
 class EnhancedRAGResponseFormatter:
     """
@@ -2181,7 +2263,7 @@ class IntegratedMetadataRAG:
     async def obtener_estadisticas_documentos(self) -> Dict[str, Any]:
         """Obtiene estadísticas de documentos vectorizados"""
         
-        conn = await asyncpg.connect(self.searcher._build_connection_string())
+        conn = await asyncpg.connect(self.searcher._build_connection_string(), statement_cache_size=0)
         
         try:
             # Estadísticas generales
@@ -2225,7 +2307,10 @@ class IntegratedMetadataRAG:
             }
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
 
 # =====================================================
 # Actualización del RAG principal para usar metadatos
@@ -2299,7 +2384,7 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             Dict con chunk_actual, chunk_anterior, chunk_siguiente
         """
         
-        conn = await asyncpg.connect(self.rag_searcher._build_connection_string())
+        conn = await asyncpg.connect(self.rag_searcher._build_connection_string(), statement_cache_size=0)
         
         try:
             # 1. Obtener el chunk principal
@@ -2336,7 +2421,10 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             return result
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
 
     async def _get_single_chunk(self, conn, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Obtiene un chunk individual por ID"""
@@ -2419,7 +2507,7 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
         Obtiene todos los chunks de una página específica ordenados
         """
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
             # Construir filtros
@@ -2486,7 +2574,10 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             return chunks
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
 
     async def navigate_chunks(
         self,
@@ -2506,7 +2597,7 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             Dict con los chunks encontrados
         """
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
             current_chunk = await self._get_single_chunk(conn, chunk_id)
@@ -2553,7 +2644,10 @@ class OptimizedEroskiKnowledgeBaseWithMetadata(OptimizedEroskiKnowledgeBase):
             return result
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
     # Mantener compatibilidad con método original
     def buscar_solucion_rag(self, query: str, top_k: int = 3) -> str:
         """Método original para compatibilidad"""
@@ -2693,7 +2787,7 @@ class PartialContextRAGSearcher:
             max_equipment_variants: Máximo número de equipos diferentes a incluir
         """
         
-        conn = await asyncpg.connect(self._build_connection_string())
+        conn = await asyncpg.connect(self._build_connection_string(), statement_cache_size=0)
         
         try:
             # 1. Obtener todos los equipos disponibles del tipo especificado
@@ -2739,7 +2833,10 @@ class PartialContextRAGSearcher:
             )
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
     
     async def _get_available_equipment(
         self,
@@ -2868,8 +2965,8 @@ class PartialContextRAGSearcher:
         return search_results
     
     def _build_connection_string(self) -> str:
-        """Construye string de conexión"""
-        return f"postgresql://{self.settings.database.user}:{self.settings.database.password or ''}@{self.settings.database.host}:{self.settings.database.port}/{self.settings.database.name}"
+        """Construye string de conexión usando la configuración correcta de Supabase"""
+        return self.settings.database.connection_string
 
 class MultiEquipmentResponseFormatter:
     """
@@ -3125,7 +3222,7 @@ class EnhancedRAGWithPartialContext:
     async def listar_equipos_disponibles(self, tipo_equipo: Optional[str] = None) -> str:
         """Lista todos los equipos disponibles en el sistema"""
         
-        conn = await asyncpg.connect(self.partial_searcher._build_connection_string())
+        conn = await asyncpg.connect(self.partial_searcher._build_connection_string(), statement_cache_size=0)
         
         try:
             base_sql = """
@@ -3176,7 +3273,10 @@ class EnhancedRAGWithPartialContext:
             return "\n".join(formatted_parts)
             
         finally:
-            await conn.close()
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignore close errors
 
 # =====================================================
 # Integración con el RAG principal

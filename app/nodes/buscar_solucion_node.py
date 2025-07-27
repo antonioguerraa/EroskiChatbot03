@@ -297,7 +297,7 @@ class BuscarSolucionNode:
             📌 Tienes que hacer lo siguiente:
 
             1. Lee con atención la consulta del usuario y **entiende su intención exacta**.
-            2. Evalúa **si alguno de los fragmentos contiene instrucciones, explicaciones o información que respondan directamente** a la consulta.
+            2. Evalúa si alguno de los fragmentos contiene información relevante o útil para la consulta (no necesita ser una respuesta directa perfecta).
             3. Si encuentras un fragmento útil, **extrae la información clave y genera una respuesta clara** para el usuario.
             4. Guarda en la lista "chunk_id_list" los identificadores de los fragmentos que responden a la consulta.
             5. Si los fragmentos no responden directamente a la consulta, indica que no hay información suficiente.
@@ -312,7 +312,7 @@ class BuscarSolucionNode:
             "chunk_id_list": ['chunk_000484', 'chunk_000136', ...]
             }}
 
-            ⚠️ No inventes información. Si el fragmento más claro habla de un tema distinto al de la consulta, ignóralo.
+            ⚠️ No inventes información. Incluye cualquier información que pueda ser útil o relacionada con la consulta.
 
             Ejemplo:
 

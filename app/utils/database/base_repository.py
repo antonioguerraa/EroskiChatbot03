@@ -35,16 +35,35 @@ class BaseRepository(Generic[T]):
         if self._pool is None:
             db_config = self.settings.database
             try:
-                self._pool = await asyncpg.create_pool(
-                    host=db_config.host,
-                    port=db_config.port,
-                    user=db_config.user,
-                    password=db_config.password,
-                    database=db_config.name,
-                    min_size=db_config.pool_min_size,
-                    max_size=db_config.pool_max_size,
-                    command_timeout=db_config.command_timeout
-                )
+                # Use connection string directly if available (for Supabase)
+                connection_string = db_config.connection_string
+                
+                if 'supabase.co' in connection_string or 'pooler.supabase.com' in connection_string:
+                    self.logger.info("🌐 Conectando a Supabase...")
+                    # For Supabase, use the connection string directly
+                    self._pool = await asyncpg.create_pool(
+                        connection_string,
+                        min_size=db_config.pool_min_size,
+                        max_size=db_config.pool_max_size,
+                        command_timeout=db_config.command_timeout,
+                        statement_cache_size=0,  # Disable statement cache for pooler compatibility
+                        # Supabase-specific settings
+                        server_settings={
+                            'jit': 'off'  # Disable JIT for better compatibility
+                        }
+                    )
+                else:
+                    # Local connection with individual parameters
+                    self._pool = await asyncpg.create_pool(
+                        host=db_config.host,
+                        port=db_config.port,
+                        user=db_config.user,
+                        password=db_config.password,
+                        database=db_config.name,
+                        min_size=db_config.pool_min_size,
+                        max_size=db_config.pool_max_size,
+                        command_timeout=db_config.command_timeout
+                    )
                 self.logger.info("✅ Pool de conexiones creado")
             except Exception as e:
                 self.logger.error(f"❌ Error creando pool: {e}")

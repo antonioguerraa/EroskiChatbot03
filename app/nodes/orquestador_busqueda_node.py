@@ -198,11 +198,13 @@ class OrquestadorBusquedaNode:
 
             # --- 3. Fusionar resultados CON ENLACES ---
             mensajes = []
-            if resultado_manual['results'] and rag_result.get("problem_identified"):
+            if resultado_manual['results']:  # Show results even if problem not perfectly identified
                 # MODIFICADO: Generar solución con enlaces
+                # Use solution_content if available, otherwise show raw chunks
+                solution_text = rag_result.get('solution_content', 'Encontré la siguiente información relevante en el manual:')
                 solucion_con_enlaces = await self._generar_solucion_con_enlaces(
                     state,
-                    rag_result['solution_content'], 
+                    solution_text, 
                     chunck_list
                 )
                 mensajes.append(f"📘 Manual:\n{solucion_con_enlaces}")
