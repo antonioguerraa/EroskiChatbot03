@@ -4,7 +4,7 @@ services:
     name: eroski-chatbot
     runtime: python
     buildCommand: "chmod +x render_build.sh && ./render_build.sh"
-    startCommand: "python -m chainlit run chainlit_app.py --host 0.0.0.0 --port $PORT"
+    startCommand: "python combined_app.py"
     envVars:
       # Python version
       - key: PYTHON_VERSION

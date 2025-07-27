@@ -12,9 +12,12 @@ pip install -r requirements.txt
 echo "📁 Creating necessary directories..."
 mkdir -p data/dictionary_cache
 mkdir -p public
+mkdir -p docs
+mkdir -p templates
 
 # Set permissions
 echo "🔒 Setting permissions..."
 chmod +x chainlit_app.py
+chmod +x combined_app.py
 
 echo "✅ Build complete!"
