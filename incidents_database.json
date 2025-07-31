@@ -2389,5 +2389,43 @@
     "session_id": "34660577036",
     "timestamp_actualizacion": "2025-07-27T23:20:08.141142",
     "version_sistema": "1.0"
+  },
+  "ER-6868": {
+    "channel": "chainlit",
+    "codigo_incidencia": "ER-6868",
+    "timestamp_creacion": "2025-07-28T00:02:20.580972",
+    "estado": "en_progreso",
+    "nombre_empleado": "Javier",
+    "nombre_tienda": "Center Durango",
+    "seccion": "Pescadería",
+    "authenticated": true,
+    "incident_type": "balanza",
+    "incident_info_adicional": null,
+    "incident_description": null,
+    "problem_description": [
+      "El usuario solicita consejos para usar la balanza."
+    ],
+    "solution_found": false,
+    "contenido_solucion": null,
+    "escalacion_necesaria": false,
+    "conversacion": [
+      {
+        "type": "HumanMessage",
+        "content": "Cual es un buen consejo para usar la balanza",
+        "timestamp": "2025-07-28T00:02:22.627672"
+      },
+      {
+        "type": "AIMessage",
+        "content": "Gracias. Voy a buscar la solución más adecuada para este problema.",
+        "timestamp": "2025-07-28T00:02:22.627680"
+      }
+    ],
+    "session_id": "eroski_session_20250728_000204",
+    "timestamp_actualizacion": "2025-07-28T00:02:22.627682",
+    "version_sistema": "1.0",
+    "solution_type": null,
+    "solution_content": null,
+    "escalation_needed": false,
+    "escalation_reason": null
   }
 }

@@ -447,7 +447,13 @@ Responde solo con "modificar" o "continuar".
 
     async def _cargar_tiendas(self) -> List[str]:
         try:
-            conn = await asyncpg.connect(get_settings().database.connection_string)
+            connection_string = get_settings().database.connection_string
+            # Disable statement cache for Supabase pooler
+            connect_kwargs = {}
+            if 'supabase.co' in connection_string or 'pooler.supabase.com' in connection_string:
+                connect_kwargs['statement_cache_size'] = 0
+            
+            conn = await asyncpg.connect(connection_string, **connect_kwargs)
             rows = await conn.fetch("SELECT nombre_tienda FROM maestro_tiendas ORDER BY nombre_tienda")
             await conn.close()
             return [row["nombre_tienda"] for row in rows]
