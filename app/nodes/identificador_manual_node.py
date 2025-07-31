@@ -448,14 +448,20 @@ Responde solo con "modificar" o "continuar".
     async def _cargar_tiendas(self) -> List[str]:
         try:
             connection_string = get_settings().database.connection_string
+            self.logger.info(f"🔍 Attempting to connect to database...")
             # Disable statement cache for Supabase pooler
-            connect_kwargs = {}
+            connect_kwargs = {
+                'timeout': 10,  # 10 second timeout
+                'command_timeout': 10
+            }
             if 'supabase.co' in connection_string or 'pooler.supabase.com' in connection_string:
                 connect_kwargs['statement_cache_size'] = 0
             
             conn = await asyncpg.connect(connection_string, **connect_kwargs)
+            self.logger.info(f"✅ Database connection established")
             rows = await conn.fetch("SELECT nombre_tienda FROM maestro_tiendas ORDER BY nombre_tienda")
             await conn.close()
+            self.logger.info(f"✅ Loaded {len(rows)} stores from database")
             return [row["nombre_tienda"] for row in rows]
         except Exception as e:
             self.logger.error(f"❌ Error cargando tiendas: {e}")
