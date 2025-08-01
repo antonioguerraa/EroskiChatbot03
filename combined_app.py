@@ -257,12 +257,24 @@ async def view_pdf(request: Request, filename: str):
     logger.info(f"Texto a resaltar: {highlight_text}")
     logger.info(f"Página: {page_number}")
     
+    # Parse highlight data if it's JSON
+    highlight_data = None
+    if highlight_text:
+        try:
+            import json
+            highlight_data = json.loads(highlight_text)
+        except:
+            # If not JSON, treat as regular text
+            pass
+    
     # Renderizar template
     return templates.TemplateResponse("pdf_viewer.html", {
         "request": request,
         "filename": filename,
-        "highlight_text": highlight_text,
-        "page_number": page_number
+        "pdf_url": f"/pdf/file/{filename}",
+        "page": int(page_number),
+        "highlight_data": highlight_data,
+        "multi_highlight_data": None
     })
 
 @app.get("/pdf/file/{filename}")
